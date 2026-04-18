@@ -1,23 +1,23 @@
-import type { Piece } from '../game/types';
+import type { Piece } from '../../game/types.ts';
 
 // Import each image file (Vite handles this automatically)
-import whiteKing from '../assets/pieces/wk.png';
-import blackKing from '../assets/pieces/bk.png';
+import whiteKing from '../../assets/pieces/wk.png';
+import blackKing from '../../assets/pieces/bk.png';
 
-import whiteQueen from '../assets/pieces/wq.png';
-import blackQueen from '../assets/pieces/bq.png';
+import whiteQueen from '../../assets/pieces/wq.png';
+import blackQueen from '../../assets/pieces/bq.png';
 
-import whiteRook from '../assets/pieces/wr.png';
-import blackRook from '../assets/pieces/br.png';
+import whiteRook from '../../assets/pieces/wr.png';
+import blackRook from '../../assets/pieces/br.png';
 
-import whiteBishop from '../assets/pieces/wb.png';
-import blackBishop from '../assets/pieces/bb.png';
+import whiteBishop from '../../assets/pieces/wb.png';
+import blackBishop from '../../assets/pieces/bb.png';
 
-import whiteKnight from '../assets/pieces/wn.png';
-import blackKnight from '../assets/pieces/bn.png';
+import whiteKnight from '../../assets/pieces/wn.png';
+import blackKnight from '../../assets/pieces/bn.png';
 
-import whitePawn from '../assets/pieces/wp.png';
-import blackPawn from '../assets/pieces/bp.png';
+import whitePawn from '../../assets/pieces/wp.png';
+import blackPawn from '../../assets/pieces/bp.png';
 
 
 const IMAGES: Record<string, Record<string, string>> = {

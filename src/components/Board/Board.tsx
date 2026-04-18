@@ -1,7 +1,7 @@
-import {toPixel, hexPoints, fileLabel} from '../game/board';
-import {type CellColor} from '../game/types';
-import {PieceSymbol} from './Piece';
-import {useGame} from "../hooks/useGame.ts";
+import {toPixel, hexPoints, fileLabel} from '../../game/board.ts';
+import {type CellColor} from '../../game/types.ts';
+import {PieceSymbol} from '../Tile/Piece.tsx';
+import {useGame} from "../../hooks/useGame.ts";
 
 const CELL_SIZE = 40;
 
