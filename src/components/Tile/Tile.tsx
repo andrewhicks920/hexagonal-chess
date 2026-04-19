@@ -16,12 +16,13 @@ interface HexTileFillProps {
     size: number;
     isSelected: boolean;
     isHighlight: boolean;
+    isCheck: boolean;
     isClickable: boolean;
     onClick: () => void;
 }
 
 
-export function HexTileFill({ cell, x, y, size, isSelected, isHighlight, isClickable, onClick }: HexTileFillProps) {
+export function HexTileFill({ cell, x, y, size, isSelected, isHighlight, isCheck, isClickable, onClick }: HexTileFillProps) {
     const points = hexPoints(x, y, size);
 
     return (
@@ -33,6 +34,14 @@ export function HexTileFill({ cell, x, y, size, isSelected, isHighlight, isClick
                 points={points}
                 fill={CELL_FILL[cell.cellColor]}
             />
+
+            {isCheck && (
+                <polygon
+                    points={points}
+                    fill="rgba(220, 0, 0, 0.5)"
+                    style={{ pointerEvents: 'none' }}
+                />
+            )}
 
             {(isSelected || isHighlight) && (
                 <polygon

@@ -1,5 +1,32 @@
 import {type Cell, type CellColor, type Color, type Piece, type PieceType, type Position} from './types';
 
+export function applyMove(
+    cells: Cell[],
+    from: Position,
+    to: Position,
+    enPassantTarget: Position | null,
+    movingColor: Color,
+): Cell[] {
+    const epCapturedR = enPassantTarget
+        ? enPassantTarget.r + (movingColor === 'white' ? -1 : 1)
+        : null;
+
+    const isEpCapture = (cell: Cell) =>
+        enPassantTarget !== null &&
+        samePos(to, enPassantTarget) &&
+        cell.q === enPassantTarget.q &&
+        cell.r === epCapturedR;
+
+    const piece = cells.find(c => samePos(c, from))!.piece;
+
+    return cells.map(cell => {
+        if (samePos(cell, from)) return { ...cell, piece: null };
+        if (samePos(cell, to))   return { ...cell, piece };
+        if (isEpCapture(cell))   return { ...cell, piece: null };
+        return cell;
+    });
+}
+
 // A cell (q, r) is on Glinski's 91-cell board when all three cube coords stay within ±5.
 // Cube coords: x=q, z=r, y=-q-r. Constraint: max(|q|, |r|, |q+r|) <= 5.
 export function isValidCell(q: number, r: number): boolean {
