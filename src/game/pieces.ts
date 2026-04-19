@@ -147,11 +147,15 @@ function isOnStartingRank(q: number, r: number, color: Color): boolean {
     return r === Math.max(1 - q, 1);
 }
 
+export let boardStateCount = 0;
+export function resetBoardStateCount() { boardStateCount = 0; }
+
 /**
  * Returns all pseudo-legal moves for the piece at `pos`.
  * Does NOT filter moves that leave the king in check — that comes next.
  */
 export function getValidMoves(cells: Cell[], pos: Position, enPassantTarget: Position | null = null,): Position[] {
+    boardStateCount++;
     const cell = cellAt(cells, pos.q, pos.r);
 
     if (!cell?.piece)
