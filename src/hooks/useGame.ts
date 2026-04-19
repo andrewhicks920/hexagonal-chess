@@ -83,6 +83,18 @@ export function useGame() {
         setValidMoves([]);
     }, [cells, currentTurn, selectedPos, validMoves, enPassantTarget, gameStatus, promotionPending]);
 
+    const resetGame = useCallback(() => {
+        setCells(generateBoard());
+        setCurrentTurn('white');
+        setSelectedPos(null);
+        setValidMoves([]);
+        setEnPassantTarget(null);
+        setGameStatus('playing');
+        setCapturedByWhite([]);
+        setCapturedByBlack([]);
+        setPromotionPending(null);
+    }, []);
+
     const confirmPromotion = useCallback((pieceType: PieceType) => {
         if (!promotionPending) return;
         const color = currentTurn;
@@ -109,5 +121,6 @@ export function useGame() {
         capturedByBlack,
         promotionPending,
         confirmPromotion,
+        resetGame,
     };
 }

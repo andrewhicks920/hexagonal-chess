@@ -8,11 +8,22 @@
     position: relative;
 }
 
+/* ── Board + captured pieces row ───────────────────────────── */
+.board-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+}
+
 .board-svg {
-    max-height: 90vh;
-    max-width: 95vw;
-    width: min(90vh, 95vw);
+    max-height: 85vh;
+    max-width: calc(95vw - 160px);
+    width: min(85vh, calc(95vw - 160px));
     height: auto;
+    flex-shrink: 0;
 }
 
 .file-label {
@@ -29,28 +40,6 @@
     font-family: sans-serif;
     text-anchor: end;
     dominant-baseline: middle;
-}
-
-/* ── Status banner ─────────────────────────────────────────── */
-.status-banner {
-    font-family: sans-serif;
-    font-size: 1.1rem;
-    font-weight: 600;
-    padding: 8px 20px;
-    border-radius: 6px;
-    margin-bottom: 8px;
-    text-align: center;
-}
-
-.status-banner.in-check {
-    background: rgba(200, 40, 40, 0.85);
-    color: #fff;
-}
-
-.status-banner.game-over {
-    background: rgba(30, 30, 30, 0.9);
-    color: #f0d9b5;
-    font-size: 1.25rem;
 }
 
 /* ── Promotion dialog ──────────────────────────────────────── */

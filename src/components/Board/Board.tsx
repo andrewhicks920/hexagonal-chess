@@ -1,6 +1,8 @@
 import { toPixel, fileLabel, isValidCell } from '../../game/board.ts';
 import { useGame } from '../../hooks/useGame.ts';
 import { HexTileFill } from '../Tile/Tile.tsx';
+import { GameStatus } from '../GameStatus.tsx';
+import { CapturedPieces } from '../CapturedPieces.tsx';
 import type { Color, PieceType } from '../../game/types.ts';
 import './Board.css';
 
@@ -66,23 +68,6 @@ const RANK_LABELS = Array.from({ length: 11 }, (_, i) => {
         return { label: rank, x: x - CELL_SIZE - 12, y };
 });
 
-function statusText(
-    status: 'playing' | 'check' | 'checkmate' | 'stalemate',
-    currentTurn: Color,
-): string | null {
-    if (status === 'check')
-        return `${currentTurn === 'white' ? 'White' : 'Black'} is in check!`;
-    if (status === 'checkmate') {
-        const winner = currentTurn === 'white' ? 'Black' : 'White';
-        return `Checkmate — ${winner} wins!`;
-    }
-    if (status === 'stalemate') {
-        const deliverer = currentTurn === 'white' ? 'Black' : 'White';
-        return `Stalemate — ${deliverer} gets ¾ point (Glinski's rules).`;
-    }
-    return null;
-}
-
 function pieceImageSrc(color: Color, type: PieceType): string {
     const c = color === 'white' ? 'w' : 'b';
     return new URL(`../../assets/pieces/neo/${c}${PIECE_MAP[type]}.png`, import.meta.url).href;
@@ -96,82 +81,89 @@ export function Board() {
         validMoves,
         handleCellClick,
         gameStatus,
+        capturedByWhite,
+        capturedByBlack,
         promotionPending,
         confirmPromotion,
+        resetGame,
     } = useGame();
 
     const validMoveSet = new Set(validMoves.map(p => `${p.q},${p.r}`));
 
-    // Find king to highlight when in check/checkmate
     const kingInCheckKey = (gameStatus === 'check' || gameStatus === 'checkmate')
         ? cells.find(c => c.piece?.type === 'king' && c.piece.color === currentTurn)
         : null;
     const checkKey = kingInCheckKey ? `${kingInCheckKey.q},${kingInCheckKey.r}` : null;
 
-    const banner = statusText(gameStatus, currentTurn);
     const isGameOver = gameStatus === 'checkmate' || gameStatus === 'stalemate';
 
     return (
         <div className="board-wrapper">
-            {banner && (
-                <div className={`status-banner ${isGameOver ? 'game-over' : 'in-check'}`}>
-                    {banner}
-                </div>
-            )}
+            <GameStatus
+                gameStatus={gameStatus}
+                currentTurn={currentTurn}
+                onNewGame={resetGame}
+            />
 
-            <svg
-                viewBox={`${-VIEW_W / 2 - LABEL_PAD} ${-VIEW_H / 2 - LABEL_PAD} ${VIEW_W + 2 * LABEL_PAD} ${VIEW_H + 2 * LABEL_PAD}`}
-                className="board-svg"
-                width="100%"
-                height="100%"
-            >
-                {cells.map(cell => {
-                    const { x, y } = toPixel(cell.q, cell.r, CELL_SIZE);
-                    const key = `${cell.q},${cell.r}`;
-                    const isSelected = selectedPos?.q === cell.q && selectedPos?.r === cell.r;
-                    const isHighlight = validMoveSet.has(key);
-                    const isCheck = key === checkKey;
-                    const isClickable =
-                        !promotionPending &&
-                        !isGameOver &&
-                        (!!cell.piece || isHighlight);
+            <div className="board-row">
+                <CapturedPieces pieces={capturedByBlack} label="Black captured" />
 
-                    return (
-                        <HexTileFill
-                            key={`fill-${key}`}
-                            cell={cell}
-                            x={x}
-                            y={y}
-                            size={CELL_SIZE}
-                            isSelected={isSelected}
-                            isHighlight={isHighlight}
-                            isCheck={isCheck}
-                            isClickable={isClickable}
-                            onClick={() => handleCellClick(cell.q, cell.r)}
-                        />
-                    );
-                })}
+                <svg
+                    viewBox={`${-VIEW_W / 2 - LABEL_PAD} ${-VIEW_H / 2 - LABEL_PAD} ${VIEW_W + 2 * LABEL_PAD} ${VIEW_H + 2 * LABEL_PAD}`}
+                    className="board-svg"
+                    width="100%"
+                    height="100%"
+                >
+                    {cells.map(cell => {
+                        const { x, y } = toPixel(cell.q, cell.r, CELL_SIZE);
+                        const key = `${cell.q},${cell.r}`;
+                        const isSelected = selectedPos?.q === cell.q && selectedPos?.r === cell.r;
+                        const isHighlight = validMoveSet.has(key);
+                        const isCheck = key === checkKey;
+                        const isClickable =
+                            !promotionPending &&
+                            !isGameOver &&
+                            (!!cell.piece || isHighlight);
 
-                <path
-                    d={GRID_PATH}
-                    stroke="#111"
-                    strokeWidth={2}
-                    fill="none"
-                    style={{ pointerEvents: 'none' }}
-                />
+                        return (
+                            <HexTileFill
+                                key={`fill-${key}`}
+                                cell={cell}
+                                x={x}
+                                y={y}
+                                size={CELL_SIZE}
+                                isSelected={isSelected}
+                                isHighlight={isHighlight}
+                                isCheck={isCheck}
+                                isClickable={isClickable}
+                                onClick={() => handleCellClick(cell.q, cell.r)}
+                            />
+                        );
+                    })}
 
-                {FILE_LABELS.map(({ label, x, y }) => (
-                    <text key={`file-${label}`} className="file-label" x={x} y={y}>
-                        {label}
-                    </text>
-                ))}
+                    <path
+                        d={GRID_PATH}
+                        stroke="#111"
+                        strokeWidth={2}
+                        fill="none"
+                        style={{ pointerEvents: 'none' }}
+                    />
 
-                {RANK_LABELS.map(({ label, x, y }) => (
-                    <text key={`rank-${label}`} className="rank-label" x={x} y={y}>
-                        {label}
-                    </text>
-                ))}
-            </svg>
+                    {FILE_LABELS.map(({ label, x, y }) => (
+                        <text key={`file-${label}`} className="file-label" x={x} y={y}>
+                            {label}
+                        </text>
+                    ))}
+
+                    {RANK_LABELS.map(({ label, x, y }) => (
+                        <text key={`rank-${label}`} className="rank-label" x={x} y={y}>
+                            {label}
+                        </text>
+                    ))}
+                </svg>
+
+                <CapturedPieces pieces={capturedByWhite} label="White captured" />
+            </div>
 
             {promotionPending && (
                 <div className="promotion-overlay">
