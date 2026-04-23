@@ -1,15 +1,7 @@
 import {type Cell, type CellColor, type Color, type Piece, type PieceType, type Position} from './types';
 
-export function applyMove(
-    cells: Cell[],
-    from: Position,
-    to: Position,
-    enPassantTarget: Position | null,
-    movingColor: Color,
-): Cell[] {
-    const epCapturedR = enPassantTarget
-        ? enPassantTarget.r + (movingColor === 'white' ? -1 : 1)
-        : null;
+export function applyMove(cells: Cell[], from: Position, to: Position, enPassantTarget: Position | null, movingColor: Color): Cell[] {
+    const epCapturedR = enPassantTarget ? enPassantTarget.r + (movingColor === 'white' ? -1 : 1) : null;
 
     const isEpCapture = (cell: Cell) =>
         enPassantTarget !== null &&
@@ -49,8 +41,12 @@ export function generateBoard(): Cell[] {
     for (let q = -5; q <= 5; q++) {
         for (let r = -5; r <= 5; r++) {
 
-            if (isValidCell(q, r))
-                cells.push({q, r, cellColor: getCellColor(q, r), piece: null});
+            if (isValidCell(q, r)) {
+                const cellColor: CellColor = getCellColor(q, r);
+                const piece = null;
+
+                cells.push({q, r, cellColor, piece});
+            }
         }
     }
 
@@ -62,31 +58,55 @@ export function generateBoard(): Cell[] {
 }
 
 // Flat-top hexagon pixel position. Negating y so rank increases upward on screen.
-export function toPixel(q: number, r: number, size: number): { x: number; y: number } {
+export function toPixel(q: number, r: number, size: number): {x: number; y: number} {
     return {
         x: size * (3 / 2) * q,
         y: -size * Math.sqrt(3) * (r + q / 2),
     };
 }
 
-// Returns SVG polygon points string for a flat-top hexagon centered at (cx, cy).
-export function hexPoints(cx: number, cy: number, size: number): string {
-    const h = (size * Math.sqrt(3)) / 2;
+
+/**
+ * Returns the 6 vertices of a flat-top hexagon centered at (cx, cy).
+ * Vertices are in clockwise order starting from the right-middle point.
+ *
+ *         (5)      (6)
+ *           \      /
+ *            \    /
+ *     (4) ---- cx,cy ---- (1)
+ *            /    \
+ *           /      \
+ *         (3)      (2)
+ *
+ * @param cx - X coordinate of the hexagon center
+ * @param cy - Y coordinate of the hexagon center
+ * @param size - Distance from center to any flat side (hex radius)
+ * @returns Array of [x, y] coordinate pairs
+ */
+export function hexVertices(cx: number, cy: number, size: number): [number, number][] {
+    const h = (size * Math.sqrt(3)) / 2; // Vertical distance from center to top/bottom vertices
     return [
-        [cx + size, cy],
-        [cx + size / 2, cy + h],
-        [cx - size / 2, cy + h],
-        [cx - size, cy],
-        [cx - size / 2, cy - h],
-        [cx + size / 2, cy - h],
-    ]
-        .map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`)
-        .join(' ');
+        [cx + size, cy],           // right-middle
+        [cx + size / 2, cy + h],   // bottom-right
+        [cx - size / 2, cy + h],   // bottom-left
+        [cx - size, cy],           // left-middle
+        [cx - size / 2, cy - h],   // top-left
+        [cx + size / 2, cy - h],   // top-right
+    ];
 }
 
-// q: -5 (file a) to +5 (file l), skipping j.
-export function fileLabel(q: number): string {
-    return ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'k', 'l'][q + 5];
+/**
+ * Returns an SVG polygon points string for a flat-top hexagon centered at (cx, cy).
+ *
+ * @param cx - X coordinate of the hexagon center
+ * @param cy - Y coordinate of the hexagon center
+ * @param size - Distance from center to any corner (hex radius)
+ * @returns Space-separated "x,y" pairs for use in an SVG `<polygon points="...">` attribute
+ */
+export function hexPoints(cx: number, cy: number, size: number): string {
+    return hexVertices(cx, cy, size)
+        .map(([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`)
+        .join(' ');
 }
 
 export function posKey(pos: Position): string {
@@ -114,6 +134,14 @@ export function getStartingPieces(): Map<string, Piece> {
         pieces.set(posKey(pos), { type, color });
     }
 
+    /*
+    FEN --> OAN (Only Andrew Notation)
+
+    FEN builds by ranks, but for hex style we'll build by files (since ranks basically bend in our implementation)
+
+
+
+     */
     place('f', 1, 'bishop', 'white');
     place('e', 1, 'queen', 'white');
     place('g', 1, 'king', 'white');

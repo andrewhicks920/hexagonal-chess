@@ -34,5 +34,5 @@ export interface Cell {
   q: number;
   r: number;
   cellColor: CellColor; // visual color of the hex tile
-  piece: Piece | null;  // which piece sits here, or null if empty
+  piece: Piece | null;  // whichever piece sits here, or null if empty
 }
