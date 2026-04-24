@@ -58,8 +58,10 @@ export function getGameStatus(
     enPassantTarget: Position | null,
 ): 'playing' | 'check' | 'checkmate' | 'stalemate' {
     const inCheck = isInCheck(cells, currentTurn);
+
     if (!hasAnyLegalMove(cells, currentTurn, enPassantTarget))
         return inCheck ? 'checkmate' : 'stalemate';
+
     return inCheck ? 'check' : 'playing';
 }
 

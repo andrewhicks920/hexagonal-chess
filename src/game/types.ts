@@ -2,18 +2,18 @@
  * HEXAGONAL COORDINATE SYSTEM (AXIAL)
  *
  * We use 'q' and 'r' to represent our hex grid, which is essentially
- * a skewed square grid. This is standard for hexagonal math.
+ * a skewed square grid.
  *
- * - q (Column): The horizontal axis. q=-5 is file 'a', q=+5 is file 'l'.
- * - r (Row): The diagonal axis (60° from q).
+ * q (Column): The horizontal axis. q=-5 is file 'a', q=+5 is file 'l'.
+ * r (Row): The diagonal axis (60° from q).
  *
  * MATH CONSTANT:
  * In a hex grid, there is an implicit third coordinate 's' where:
  * q + r + s = 0. We only store q and r because s = -q - r.
  *
  * COORDINATE DIRECTIONS:
- * - Orthogonal (Rook-like): Move through a shared edge (+q, +r, or +s).
- * - Diagonal (Bishop-like): Move through a shared vertex (two coords change).
+ * Orthogonal (Rook-like): Move through a shared edge (+q, +r, or +s).
+ * Diagonal (Bishop-like): Move through a shared vertex (two coords change).
  */
 
 export type Color = 'white' | 'black';

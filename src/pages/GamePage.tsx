@@ -185,7 +185,7 @@ export function GamePage({ mode, themeName, pieceSet, onThemeChange, onPieceSetC
                         </div>
                     )}
                     <button className="new-game-btn" onClick={handleReset}>
-                        + New Game
+                        + New Gamee
                     </button>
                 </div>
             </aside>
