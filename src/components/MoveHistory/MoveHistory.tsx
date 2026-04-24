@@ -6,13 +6,17 @@ interface Props {
     moves: MoveRecord[];
 }
 
+function MoveCell({ san }: { san: string }) {
+    return <span className="move-cell-san">{san}</span>;
+}
+
 export function MoveHistory({ moves }: Props) {
     const listRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (listRef.current) {
+        if (listRef.current)
             listRef.current.scrollTop = listRef.current.scrollHeight;
-        }
+
     }, [moves]);
 
     return (
@@ -23,8 +27,12 @@ export function MoveHistory({ moves }: Props) {
             {moves.map(record => (
                 <div key={record.moveNumber} className="move-row">
                     <span className="move-number">{record.moveNumber}</span>
-                    <span className="move-cell move-cell--white">{record.white ?? ''}</span>
-                    <span className="move-cell move-cell--black">{record.black ?? ''}</span>
+                    <span className="move-cell move-cell--white">
+                        {record.white ? <MoveCell san={record.white} /> : ''}
+                    </span>
+                    <span className="move-cell move-cell--black">
+                        {record.black ? <MoveCell san={record.black} /> : ''}
+                    </span>
                 </div>
             ))}
         </div>

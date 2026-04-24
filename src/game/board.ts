@@ -131,7 +131,7 @@ export function fileRankToPos(file: string, rank: number): Position {
 // FEN builds by ranks, but for hex style JAN will build by files (since ranks basically bend in our implementation)
 // 6/P5P/RP4rp/N1P3p1n/Q2P2p2q/BBB1P1p1bbb/K2P2p2k/N1P3p1n/RP4rp/P5P/6
 export function getStartingPieces(): Map<string, Piece> {
-    return parseFen('6/P5p/RP4rp/N1P3p1n/Q2P2p2q/BBB1P1p1bbb/K2P2p2k/N1P3p1n/RP4rp/P5p/6');
+    return parseFen('6/P5p/RP4pr/N1P3p1n/Q2P2p2q/BBB1P1p1bbb/K2P2p2k/N1P3p1n/RP4pr/P5p/6');
 }
 
 

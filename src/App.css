@@ -1,11 +1,18 @@
 .app-shell {
     display: flex;
+    flex-direction: column;
     height: 100vh;
     width: 100vw;
     overflow: hidden;
     background: #262421;
     color: #e8e3de;
     font-family: 'Noto Sans', 'Segoe UI', Arial, sans-serif;
+}
+
+.game-content {
+    flex: 1;
+    display: flex;
+    min-height: 0;
 }
 
 .sidebar {
@@ -33,6 +40,23 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.07);
     min-height: 62px;
     flex-shrink: 0;
+    width: 100%;
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.sidebar-brand:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.sidebar-brand-logo {
+    height: 100px; /* Adjust the height as needed */
+    width: 200px;  /* Adjust the width as needed */
+    display: flex;  /* Use Flexbox */
+    justify-content: center; /* Center horizontally */
+    align-items: center; /* Center vertically */
 }
 
 .sidebar-logo-icon {
@@ -103,8 +127,6 @@
     padding: 8px 0;
     flex-shrink: 0;
 }
-
-/* ─── Board Area ─────────────────────────────────────────────────────────────── */
 
 .board-area {
     flex: 1;

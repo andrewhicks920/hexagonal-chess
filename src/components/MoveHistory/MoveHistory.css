@@ -62,3 +62,16 @@
 .move-cell--white {
     border-right: 1px solid rgba(255, 255, 255, 0.06);
 }
+
+.move-cell-san {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 1px;
+}
+
+.piece-glyph {
+    font-family: 'chessglyph', sans-serif;
+    font-size: 1.15em;
+    line-height: 1;
+    vertical-align: middle;
+}
