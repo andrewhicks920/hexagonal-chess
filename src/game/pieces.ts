@@ -1,22 +1,22 @@
 import { type Cell, type Color, type Position } from './types';
-import { isValidCell } from './board';
+import { isValidCell, buildCellMap } from './board';
 
 // Rook — slides along 3 axes (6 directions)
-const ROOK_DIRS: [number, number][] = [
+export const ROOK_DIRS: [number, number][] = [
     [ 0,  1], [ 0, -1],  // along r
     [ 1,  0], [-1,  0],  // along q
     [ 1, -1], [-1,  1],  // along s (−q−r)
 ];
 
 // Bishop — slides through shared vertices (6 directions)
-const BISHOP_DIRS: [number, number][] = [
+export const BISHOP_DIRS: [number, number][] = [
     [ 1,  1], [-1, -1],
     [ 2, -1], [-2,  1],
     [ 1, -2], [-1,  2],
 ];
 
 // Knight — 12 fixed jumps (1 rook step + 1 bishop step, non-parallel axis)
-const KNIGHT_MOVES: [number, number][] = [
+export const KNIGHT_MOVES: [number, number][] = [
     [ 3, -1], [-3,  1],
     [ 2,  1], [-2, -1],
     [ 1,  2], [-1, -2],
@@ -25,20 +25,20 @@ const KNIGHT_MOVES: [number, number][] = [
     [ 2, -3], [-2,  3],
 ];
 
-const KING_DIRS: [number, number][] = [...ROOK_DIRS, ...BISHOP_DIRS];
+export const KING_DIRS: [number, number][] = [...ROOK_DIRS, ...BISHOP_DIRS];
 
-function cellAt(cells: Cell[], q: number, r: number): Cell | undefined {
-    return cells.find(c => c.q === q && c.r === r);
+function cellAt(cellMap: Map<string, Cell>, q: number, r: number): Cell | undefined {
+    return cellMap.get(`${q},${r}`);
 }
 
 // Walk one ray until the board edge, a friendly piece, or a capture.
-function slide(cells: Cell[], from: Position, dq: number, dr: number, color: Color,): Position[] {
+function slide(cellMap: Map<string, Cell>, from: Position, dq: number, dr: number, color: Color): Position[] {
     const moves: Position[] = [];
     let q = from.q + dq;
     let r = from.r + dr;
 
     while (isValidCell(q, r)) {
-        const occupant = cellAt(cells, q, r)?.piece;
+        const occupant = cellAt(cellMap, q, r)?.piece;
         if (occupant) {
             if (occupant.color !== color)
                 moves.push({ q, r }); // capture
@@ -54,41 +54,38 @@ function slide(cells: Cell[], from: Position, dq: number, dr: number, color: Col
     return moves;
 }
 
-function rookMoves(cells: Cell[], pos: Position, color: Color): Position[] {
-    return ROOK_DIRS.flatMap(([dq, dr]) => slide(cells, pos, dq, dr, color));
+function rookMoves(cellMap: Map<string, Cell>, pos: Position, color: Color): Position[] {
+    return ROOK_DIRS.flatMap(([dq, dr]) => slide(cellMap, pos, dq, dr, color));
 }
 
-function bishopMoves(cells: Cell[], pos: Position, color: Color): Position[] {
-    return BISHOP_DIRS.flatMap(([dq, dr]) => slide(cells, pos, dq, dr, color));
+function bishopMoves(cellMap: Map<string, Cell>, pos: Position, color: Color): Position[] {
+    return BISHOP_DIRS.flatMap(([dq, dr]) => slide(cellMap, pos, dq, dr, color));
 }
 
-function queenMoves(cells: Cell[], pos: Position, color: Color): Position[] {
-    return [
-        ...ROOK_DIRS.flatMap(([dq, dr]) => slide(cells, pos, dq, dr, color)),
-        ...BISHOP_DIRS.flatMap(([dq, dr]) => slide(cells, pos, dq, dr, color)),
-    ];
+function queenMoves(cellMap: Map<string, Cell>, pos: Position, color: Color): Position[] {
+    return [...rookMoves(cellMap, pos, color), ...bishopMoves(cellMap, pos, color)];
 }
 
-function kingMoves(cells: Cell[], pos: Position, color: Color): Position[] {
+function kingMoves(cellMap: Map<string, Cell>, pos: Position, color: Color): Position[] {
     const moves: Position[] = [];
     for (const [dq, dr] of KING_DIRS) {
         const q = pos.q + dq;
         const r = pos.r + dr;
         if (!isValidCell(q, r)) continue;
-        const occupant = cellAt(cells, q, r)?.piece;
+        const occupant = cellAt(cellMap, q, r)?.piece;
         if (occupant?.color === color) continue; // own piece blocks
         moves.push({ q, r });
     }
     return moves;
 }
 
-function knightMoves(cells: Cell[], pos: Position, color: Color): Position[] {
+function knightMoves(cellMap: Map<string, Cell>, pos: Position, color: Color): Position[] {
     const moves: Position[] = [];
     for (const [dq, dr] of KNIGHT_MOVES) {
         const q = pos.q + dq;
         const r = pos.r + dr;
         if (!isValidCell(q, r)) continue;
-        const occupant = cellAt(cells, q, r)?.piece;
+        const occupant = cellAt(cellMap, q, r)?.piece;
         if (occupant?.color === color) continue;
         moves.push({ q, r });
     }
@@ -97,18 +94,18 @@ function knightMoves(cells: Cell[], pos: Position, color: Color): Position[] {
 
 // White moves visually upward: straight (0,+1), captures (+1,0) and (−1,+1)
 // Black moves visually downward: straight (0,−1), captures (−1,0) and (+1,−1)
-function pawnMoves(cells: Cell[], pos: Position, color: Color, enPassantTarget: Position | null,): Position[] {
+function pawnMoves(cellMap: Map<string, Cell>, pos: Position, color: Color, enPassantTarget: Position | null): Position[] {
     const moves: Position[] = [];
     const { q, r } = pos;
     const dr = color === 'white' ? 1 : -1;
 
     // Straight — non-capturing
-    const oneAhead = cellAt(cells, q, r + dr);
+    const oneAhead = cellAt(cellMap, q, r + dr);
     if (oneAhead && !oneAhead.piece) {
         moves.push({ q, r: r + dr });
 
         if (isOnStartingRank(q, r, color)) {
-            const twoAhead = cellAt(cells, q, r + 2 * dr);
+            const twoAhead = cellAt(cellMap, q, r + 2 * dr);
             if (twoAhead && !twoAhead.piece)
                 moves.push({ q, r: r + 2 * dr });
         }
@@ -125,7 +122,7 @@ function pawnMoves(cells: Cell[], pos: Position, color: Color, enPassantTarget: 
         const tr = r + dCapR;
         if (!isValidCell(tq, tr)) continue;
 
-        const target = cellAt(cells, tq, tr);
+        const target = cellAt(cellMap, tq, tr);
         const isEnPassant = enPassantTarget?.q === tq && enPassantTarget?.r === tr;
 
         if ((target?.piece && target.piece.color !== color) || isEnPassant)
@@ -149,9 +146,11 @@ export function resetBoardStateCount() { boardStateCount = 0; }
  * Returns all pseudo-legal moves for the piece at `pos`.
  * Does NOT filter moves that leave the king in check — that comes next.
  */
-export function getValidMoves(cells: Cell[], pos: Position, enPassantTarget: Position | null = null,): Position[] {
+export function getPseudoLegalMoves(cells: Cell[], pos: Position, enPassantTarget: Position | null = null): Position[] {
     boardStateCount++;
-    const cell = cellAt(cells, pos.q, pos.r);
+    // Build once so every cellAt lookup below is O(1) instead of O(n).
+    const cellMap = buildCellMap(cells);
+    const cell = cellAt(cellMap, pos.q, pos.r);
 
     if (!cell?.piece)
         return [];
@@ -159,11 +158,11 @@ export function getValidMoves(cells: Cell[], pos: Position, enPassantTarget: Pos
     const { type, color } = cell.piece;
 
     switch (type) {
-        case 'rook':   return rookMoves(cells, pos, color);
-        case 'bishop': return bishopMoves(cells, pos, color);
-        case 'queen':  return queenMoves(cells, pos, color);
-        case 'king':   return kingMoves(cells, pos, color);
-        case 'knight': return knightMoves(cells, pos, color);
-        case 'pawn':   return pawnMoves(cells, pos, color, enPassantTarget);
+        case 'rook':   return rookMoves(cellMap, pos, color);
+        case 'bishop': return bishopMoves(cellMap, pos, color);
+        case 'queen':  return queenMoves(cellMap, pos, color);
+        case 'king':   return kingMoves(cellMap, pos, color);
+        case 'knight': return knightMoves(cellMap, pos, color);
+        case 'pawn':   return pawnMoves(cellMap, pos, color, enPassantTarget);
     }
 }

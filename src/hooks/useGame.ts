@@ -1,19 +1,24 @@
 import { useState, useCallback } from 'react';
 import { type Cell, type Color, type Piece, type PieceType, type Position, type MoveRecord, oppositeColor } from '../game/types';
-import { generateBoard, samePos, applyMove } from '../game/board';
+import { generateBoard, samePos, applyMove, computeEnPassantTarget, FILES } from '../game/board';
 import { getLegalMoves, getGameStatus, isPromotionSquare } from '../game/gameLogic';
-
-const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'k', 'l'];
 
 const PIECE_LETTERS: Record<PieceType, string> = {
     king: 'K', queen: 'Q', rook: 'R', bishop: 'B', knight: 'N', pawn: '',
 };
 
-type PromoPieceType = 'queen' | 'rook' | 'bishop' | 'knight';
+export type PromoPieceType = 'queen' | 'rook' | 'bishop' | 'knight';
 
 const PROMO_LETTERS: Record<PromoPieceType, string> = {
     queen: 'Q', rook: 'R', bishop: 'B', knight: 'N',
 };
+
+/** Tracks a pawn promotion that is waiting for the player to pick a piece. */
+interface PendingPromotion {
+    pos: Position;
+    baseNotation: string;
+    color: Color;
+}
 
 function fileOf(pos: Position): string { return FILES[pos.q + 5] ?? '?'; }
 function rankOf(pos: Position): number { return pos.q + pos.r + 6; }
@@ -110,18 +115,14 @@ export function useGame() {
     const [gameStatus, setGameStatus] = useState<'playing' | 'check' | 'checkmate' | 'stalemate'>('playing');
     const [capturedByWhite, setCapturedByWhite] = useState<Piece[]>([]);
     const [capturedByBlack, setCapturedByBlack] = useState<Piece[]>([]);
-    const [promotionPending, setPromotionPending] = useState<Position | null>(null);
+    const [pendingPromotion, setPendingPromotion] = useState<PendingPromotion | null>(null);
     const [moveHistory, setMoveHistory] = useState<MoveRecord[]>([]);
-    const [promotionBaseNotation, setPromotionBaseNotation] = useState<string | null>(null);
 
     const executeMove = useCallback((from: Position, to: Position) => {
         const movingPiece = cells.find(c => samePos(c, from))?.piece;
         if (!movingPiece) return;
 
-        const isPawnDouble = movingPiece.type === 'pawn' && Math.abs(to.r - from.r) === 2;
-        const newEnPassantTarget: Position | null = isPawnDouble
-            ? { q: to.q, r: (from.r + to.r) / 2 }
-            : null;
+        const newEnPassantTarget = computeEnPassantTarget(from, to, movingPiece);
 
         const normalCapture = cells.find(c => samePos(c, to))?.piece ?? null;
         const epCapR = enPassantTarget
@@ -151,13 +152,12 @@ export function useGame() {
         setValidMoves([]);
 
         if (isPromotion) {
+            // Defer writing to move history until the piece is chosen — no '=?' sentinel needed.
             const baseNotation = buildNotation(
                 movingPiece, from, to, !!captured, '',
                 preMoveBoard, enPassantTarget,
             );
-            setPromotionBaseNotation(baseNotation);
-            setMoveHistory(prev => addToHistory(prev, movingPiece.color, baseNotation + '=?'));
-            setPromotionPending(to);
+            setPendingPromotion({ pos: to, baseNotation, color: movingPiece.color });
         } else {
             const nextStatus = getGameStatus(newCells, nextTurn, newEnPassantTarget);
             const notation = buildNotation(
@@ -171,7 +171,7 @@ export function useGame() {
     }, [cells, currentTurn, enPassantTarget]);
 
     const handleCellClick = useCallback((q: number, r: number) => {
-        if (promotionPending) return;
+        if (pendingPromotion) return;
         if (gameStatus === 'checkmate' || gameStatus === 'stalemate') return;
 
         const clicked: Position = { q, r };
@@ -190,7 +190,7 @@ export function useGame() {
 
         setSelectedPos(null);
         setValidMoves([]);
-    }, [cells, currentTurn, selectedPos, validMoves, enPassantTarget, gameStatus, promotionPending, executeMove]);
+    }, [cells, currentTurn, selectedPos, validMoves, enPassantTarget, gameStatus, pendingPromotion, executeMove]);
 
     const resetGame = useCallback(() => {
         setCells(generateBoard());
@@ -201,40 +201,29 @@ export function useGame() {
         setGameStatus('playing');
         setCapturedByWhite([]);
         setCapturedByBlack([]);
-        setPromotionPending(null);
+        setPendingPromotion(null);
         setMoveHistory([]);
-        setPromotionBaseNotation(null);
     }, []);
 
-    const confirmPromotion = useCallback((pieceType: PieceType) => {
-        if (!promotionPending) return;
-        const color = currentTurn;
+    const confirmPromotion = useCallback((pieceType: PromoPieceType) => {
+        if (!pendingPromotion) return;
+        const { pos, baseNotation, color } = pendingPromotion;
         const newCells = cells.map(cell =>
-            samePos(cell, promotionPending)
+            samePos(cell, pos)
                 ? { ...cell, piece: { type: pieceType, color } }
                 : cell,
         );
-        const nextTurn = oppositeColor(currentTurn);
+        const nextTurn = oppositeColor(color);
         const nextStatus = getGameStatus(newCells, nextTurn, enPassantTarget);
         const checkSym = nextStatus === 'checkmate' ? '#' : nextStatus === 'check' ? '+' : '';
-        const fullNotation = (promotionBaseNotation ?? '') + `=${PROMO_LETTERS[pieceType as PromoPieceType]}${checkSym}`;
+        const fullNotation = `${baseNotation}=${PROMO_LETTERS[pieceType]}${checkSym}`;
 
-        setMoveHistory(prev => {
-            const last = prev[prev.length - 1];
-            if (!last) return prev;
-            const colorField = color === 'white' ? 'white' : 'black' as const;
-            if (typeof last[colorField] === 'string' && (last[colorField] as string).includes('=?')) {
-                return [...prev.slice(0, -1), { ...last, [colorField]: fullNotation }];
-            }
-            return prev;
-        });
-
+        setMoveHistory(prev => addToHistory(prev, color, fullNotation));
         setCells(newCells);
         setCurrentTurn(nextTurn);
-        setPromotionPending(null);
-        setPromotionBaseNotation(null);
+        setPendingPromotion(null);
         setGameStatus(nextStatus);
-    }, [promotionPending, currentTurn, cells, enPassantTarget, promotionBaseNotation]);
+    }, [pendingPromotion, cells, enPassantTarget]);
 
     return {
         cells,
@@ -246,7 +235,7 @@ export function useGame() {
         gameStatus,
         capturedByWhite,
         capturedByBlack,
-        promotionPending,
+        promotionPending: pendingPromotion?.pos ?? null,
         confirmPromotion,
         resetGame,
         moveHistory,

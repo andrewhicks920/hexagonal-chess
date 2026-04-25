@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Board } from '../components/Board/Board.tsx';
 import { Settings } from '../components/Settings/Settings.tsx';
 import { MoveHistory } from '../components/MoveHistory/MoveHistory.tsx';
@@ -6,22 +6,10 @@ import { CapturedPieces } from '../components/CapturedPieces/CapturedPieces.tsx'
 import { TopBar } from '../components/TopBar/TopBar.tsx';
 import { BotSetup } from '../components/BotSetup/BotSetup.tsx';
 import { useGame } from '../hooks/useGame.ts';
-import { getBotMove, type Difficulty } from '../game/ai.ts';
+import type { Difficulty } from '../game/ai.ts';
 import { themes, type ThemeName } from '../uiConfig.ts';
 import type { Color } from '../game/types.ts';
-
-function PlayerAvatar({ color }: { color: 'white' | 'black' }) {
-    const bg = color === 'white' ? '#9f9689' : '#555353';
-    const fg = color === 'white' ? '#d4ccc4' : '#3a3838';
-
-    return (
-        <svg className="player-avatar" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-            <rect width="40" height="40" rx="4" fill={bg} />
-            <ellipse cx="20" cy="15" rx="8" ry="9" fill={fg} />
-            <ellipse cx="20" cy="38" rx="15" ry="12" fill={fg} />
-        </svg>
-    );
-}
+import { PlayerAvatar } from '../components/PlayerAvatar/PlayerAvatar.tsx';
 
 type GameMode = 'local' | 'analysis' | 'bot' | 'online';
 
@@ -70,20 +58,51 @@ export function GamePage({ mode, themeName, pieceSet, onThemeChange, onPieceSetC
         handleCellClick(q, r);
     }, [mode, botReady, currentTurn, playerColor, handleCellClick]);
 
-    // Trigger bot move when it's the computer's turn
+    // Bot Web Worker — created once, lives for the lifetime of the page.
+    const workerRef = useRef<Worker | null>(null);
+    useEffect(() => {
+        const worker = new Worker(
+            new URL('../game/botWorker.ts', import.meta.url),
+            { type: 'module' },
+        );
+        workerRef.current = worker;
+        return () => { worker.terminate(); workerRef.current = null; };
+    }, []);
+
+    // Trigger bot move when it's the computer's turn.
+    // Runs the minimax search in the worker so the UI thread stays responsive.
     useEffect(() => {
         if (mode !== 'bot' || !botReady) return;
         if (currentTurn !== botColor) return;
         if (isGameOver) return;
         if (promotionPending) return;
 
-        const timer = setTimeout(() => {
-            const move = getBotMove(cells, botColor, enPassantTarget, difficulty);
+        const worker = workerRef.current;
+        if (!worker) return;
+
+        let cancelled = false;
+
+        const handler = (e: MessageEvent) => {
+            if (cancelled) return;
+            const move = e.data;
             if (move) executeBotMove(move.from, move.to);
+        };
+
+        // { once: true } so the listener auto-removes after the first response.
+        worker.addEventListener('message', handler, { once: true });
+
+        const timer = setTimeout(() => {
+            if (!cancelled) {
+                worker.postMessage({ cells, botColor, enPassantTarget, difficulty });
+            }
         }, 350);
 
-        return () => clearTimeout(timer);
-    // cells/enPassantTarget intentionally omitted — currentTurn change is the trigger
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+            worker.removeEventListener('message', handler);
+        };
+    // cells/enPassantTarget/difficulty intentionally omitted — currentTurn change is the trigger
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mode, botReady, currentTurn, botColor, isGameOver, promotionPending]);
 
@@ -134,7 +153,7 @@ export function GamePage({ mode, themeName, pieceSet, onThemeChange, onPieceSetC
             <div className="game-content">
             <main className="board-area">
                 <div className={`player-panel${currentTurn === topColor && !isGameOver ? ' player-panel--active' : ''}`}>
-                    <PlayerAvatar color={topColor} />
+                    <PlayerAvatar color={topColor} className="player-avatar" />
                     <div className="player-info">
                         <span className="player-name">{topLabel}</span>
                         <CapturedPieces pieces={topColor === 'black' ? capturedByBlack : capturedByWhite} pieceSet={pieceSet} />
@@ -156,7 +175,7 @@ export function GamePage({ mode, themeName, pieceSet, onThemeChange, onPieceSetC
                 />
 
                 <div className={`player-panel${currentTurn === bottomColor && !isGameOver ? ' player-panel--active' : ''}`}>
-                    <PlayerAvatar color={bottomColor} />
+                    <PlayerAvatar color={bottomColor} className="player-avatar" />
                     <div className="player-info">
                         <span className="player-name">{bottomLabel}</span>
                         <CapturedPieces pieces={bottomColor === 'white' ? capturedByWhite : capturedByBlack} pieceSet={pieceSet} />

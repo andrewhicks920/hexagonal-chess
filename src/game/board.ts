@@ -1,5 +1,22 @@
 import {type Cell, type CellColor, type Color, type Piece, type PieceType, type Position} from './types';
 
+export const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'k', 'l'];
+
+/**
+ * Returns the en-passant target square after a pawn double-push, or null.
+ * The target is the square the capturing pawn lands on (the skipped square),
+ * not the square of the captured pawn.
+ */
+export function computeEnPassantTarget(
+    from: Position,
+    to: Position,
+    piece: Piece | null | undefined,
+): Position | null {
+    if (piece?.type !== 'pawn') return null;
+    if (Math.abs(to.r - from.r) !== 2) return null;
+    return { q: to.q, r: (from.r + to.r) / 2 };
+}
+
 export function applyMove(cells: Cell[], from: Position, to: Position, enPassantTarget: Position | null, movingColor: Color): Cell[] {
     const epCapturedR = enPassantTarget ? enPassantTarget.r + (movingColor === 'white' ? -1 : 1) : null;
 
@@ -113,6 +130,13 @@ export function posKey(pos: Position): string {
     return `${pos.q},${pos.r}`;
 }
 
+/** Build an O(1) lookup map from a Cell array, keyed by posKey. */
+export function buildCellMap(cells: Cell[]): Map<string, Cell> {
+    const map = new Map<string, Cell>();
+    for (const cell of cells) map.set(posKey(cell), cell);
+    return map;
+}
+
 export function samePos(a: Position, b: Position): boolean {
     return a.q === b.q && a.r === b.r;
 }
@@ -120,8 +144,7 @@ export function samePos(a: Position, b: Position): boolean {
 // Converts a file letter + rank number to (q, r) coordinates.
 // file: 'a'–'l' (no 'j').  rank: 1–11.
 export function fileRankToPos(file: string, rank: number): Position {
-    const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'k', 'l'];
-    const q = files.indexOf(file) - 5;
+    const q = FILES.indexOf(file) - 5;
     const r = rank - Math.min(q, 0) - 6;
     return { q, r };
 }

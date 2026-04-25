@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getValidMoves } from '../pieces';
+import { getPseudoLegalMoves as getValidMoves } from '../pieces';
 import { isValidCell } from '../board';
 import { pos, w, b, makeBoard, allValidCells } from './helpers';
 

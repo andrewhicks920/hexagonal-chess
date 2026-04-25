@@ -1,6 +1,6 @@
 import { type Cell, type Color, type Position, type PieceType, oppositeColor } from './types';
 import { getLegalMoves, getGameStatus } from './gameLogic';
-import { applyMove } from './board';
+import { applyMove, computeEnPassantTarget } from './board';
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
@@ -28,11 +28,10 @@ function evaluate(cells: Cell[], color: Color): number {
     return score;
 }
 
+/** Thin wrapper so minimax call sites stay readable. */
 function newEnPassant(cells: Cell[], move: Move): Position | null {
     const piece = cells.find(c => c.q === move.from.q && c.r === move.from.r)?.piece;
-    if (piece?.type !== 'pawn') return null;
-    if (Math.abs(move.to.r - move.from.r) !== 2) return null;
-    return { q: move.to.q, r: (move.from.r + move.to.r) / 2 };
+    return computeEnPassantTarget(move.from, move.to, piece);
 }
 
 function getAllMoves(cells: Cell[], color: Color, enPassantTarget: Position | null): Move[] {

@@ -1,7 +1,9 @@
 import { toPixel, isValidCell, hexVertices } from '../../game/board.ts';
 import { HexTileFill } from '../Tile/Tile.tsx';
 import { pieceImageSrc } from '../Tile/Piece.tsx';
-import type { Cell, Color, PieceType, Position } from '../../game/types.ts';
+import type { Cell, Color, Position } from '../../game/types.ts';
+import type { PromoPieceType } from '../../hooks/useGame.ts';
+import { useMemo } from 'react';
 import './Board.css';
 
 const CELL_SIZE = 40;
@@ -10,7 +12,7 @@ const VIEW_H = 11 * Math.sqrt(3) * CELL_SIZE;
 const HEX_H = (CELL_SIZE * Math.sqrt(3)) / 2;
 const LABEL_PAD = 50;
 
-const PROMOTION_PIECES: PieceType[] = ['queen', 'rook', 'bishop', 'knight'];
+const PROMOTION_PIECES: PromoPieceType[] = ['queen', 'rook', 'bishop', 'knight'];
 
 function buildGridPath(size: number): string {
     const segments: string[] = [];
@@ -89,7 +91,7 @@ interface BoardProps {
     handleCellClick: (q: number, r: number) => void;
     gameStatus: 'playing' | 'check' | 'checkmate' | 'stalemate';
     promotionPending: Position | null;
-    confirmPromotion: (pieceType: PieceType) => void;
+    confirmPromotion: (pieceType: PromoPieceType) => void;
     pieceSet: string;
     flipped?: boolean;
 }
@@ -115,8 +117,8 @@ export function Board({
 
     const isGameOver = gameStatus === 'checkmate' || gameStatus === 'stalemate';
 
-    const fileLabels = buildFileLabels(flipped);
-    const rankLabels = buildRankLabels(flipped);
+    const fileLabels = useMemo(() => buildFileLabels(flipped), [flipped]);
+    const rankLabels = useMemo(() => buildRankLabels(flipped), [flipped]);
 
     return (
         <div className="board-wrapper">

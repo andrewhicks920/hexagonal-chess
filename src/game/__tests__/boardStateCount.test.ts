@@ -1,15 +1,18 @@
 /**
  * Counts the total number of board states evaluated across all test scenarios.
  *
- * Every call to getValidMoves — both direct (move generation) and internal
- * (isInCheck iterates all opponent pieces, getLegalMoves filters each
- * pseudo-legal move by king safety) — increments boardStateCount.
+ * Every call to getPseudoLegalMoves increments boardStateCount.  This includes:
+ *   - Direct calls in the tests below.
+ *   - Calls from getLegalMoves (one per piece when filtering by king safety).
+ *
+ * NOTE: isInCheck uses a reverse ray-cast lookup and no longer calls
+ * getPseudoLegalMoves, so its contribution here is zero (by design).
  *
  * All scenarios run in one worker so the counter accumulates correctly.
  */
 
 import { it, expect, afterAll } from 'vitest';
-import { getValidMoves, resetBoardStateCount, boardStateCount } from '../pieces';
+import { getPseudoLegalMoves, resetBoardStateCount, boardStateCount } from '../pieces';
 import { getLegalMoves, isInCheck, getGameStatus } from '../gameLogic';
 import { generateBoard } from '../board';
 import { pos, w, b, makeBoard, allValidCells } from './helpers';
@@ -21,66 +24,66 @@ it('every piece type from every valid cell', () => {
     for (const cell of allValidCells()) {
         for (const type of ['rook', 'bishop', 'queen', 'king', 'knight'] as const) {
             const board = makeBoard([[cell, w(type)]]);
-            getValidMoves(board, cell);
+            getPseudoLegalMoves(board, cell);
         }
     }
 });
 
 // Specific piece scenarios
 it('rook scenarios', () => {
-    getValidMoves(makeBoard([[pos(0,0), w('rook')]]), pos(0,0));
-    getValidMoves(makeBoard([[pos(5,0), w('rook')]]), pos(5,0));
-    getValidMoves(makeBoard([[pos(0,0), w('rook')],[pos(0,3), w('pawn')]]), pos(0,0));
-    getValidMoves(makeBoard([[pos(0,0), w('rook')],[pos(0,3), b('pawn')]]), pos(0,0));
-    getValidMoves(makeBoard([[pos(0,0), w('rook')],[pos(0,1), w('pawn')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('rook')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(5,0), w('rook')]]), pos(5,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('rook')],[pos(0,3), w('pawn')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('rook')],[pos(0,3), b('pawn')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('rook')],[pos(0,1), w('pawn')]]), pos(0,0));
 });
 
 it('bishop scenarios', () => {
-    getValidMoves(makeBoard([[pos(0,0), w('bishop')]]), pos(0,0));
-    getValidMoves(makeBoard([[pos(0,0), w('bishop')],[pos(2,2), w('pawn')]]), pos(0,0));
-    getValidMoves(makeBoard([[pos(0,0), w('bishop')],[pos(1,1), b('pawn')]]), pos(0,0));
-    getValidMoves(makeBoard([[pos(5,-5), w('bishop')]]), pos(5,-5));
-    getValidMoves(makeBoard([[pos(0,0), w('bishop')],[pos(1,1), w('pawn')],[pos(-1,-1), w('pawn')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('bishop')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('bishop')],[pos(2,2), w('pawn')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('bishop')],[pos(1,1), b('pawn')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(5,-5), w('bishop')]]), pos(5,-5));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('bishop')],[pos(1,1), w('pawn')],[pos(-1,-1), w('pawn')]]), pos(0,0));
 });
 
 it('queen scenarios', () => {
-    getValidMoves(makeBoard([[pos(0,0), w('queen')]]), pos(0,0));
-    getValidMoves(makeBoard([[pos(0,0), w('queen')],[pos(0,2), w('pawn')]]), pos(0,0));
-    getValidMoves(makeBoard([[pos(0,0), w('queen')],[pos(3,0), b('rook')]]), pos(0,0));
-    getValidMoves(makeBoard([[pos(0,0), w('queen')],[pos(2,-1), b('rook')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('queen')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('queen')],[pos(0,2), w('pawn')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('queen')],[pos(3,0), b('rook')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('queen')],[pos(2,-1), b('rook')]]), pos(0,0));
 });
 
 it('king scenarios', () => {
-    getValidMoves(makeBoard([[pos(0,0), w('king')]]), pos(0,0));
-    getValidMoves(makeBoard([[pos(5,0), w('king')]]), pos(5,0));
-    getValidMoves(makeBoard([[pos(0,0), w('king')],[pos(0,1), b('pawn')]]), pos(0,0));
-    getValidMoves(makeBoard([[pos(0,0), w('king')],[pos(0,1), w('rook')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('king')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(5,0), w('king')]]), pos(5,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('king')],[pos(0,1), b('pawn')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('king')],[pos(0,1), w('rook')]]), pos(0,0));
 });
 
 it('knight scenarios', () => {
-    getValidMoves(makeBoard([[pos(0,0), w('knight')]]), pos(0,0));
-    getValidMoves(makeBoard([[pos(5,0), w('knight')]]), pos(5,0));
-    getValidMoves(makeBoard([[pos(0,0), w('knight')],[pos(3,-1), b('pawn')]]), pos(0,0));
-    getValidMoves(makeBoard([[pos(0,0), w('knight')],[pos(1,0), b('rook')],[pos(2,0), b('rook')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('knight')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(5,0), w('knight')]]), pos(5,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('knight')],[pos(3,-1), b('pawn')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('knight')],[pos(1,0), b('rook')],[pos(2,0), b('rook')]]), pos(0,0));
 });
 
 it('pawn scenarios', () => {
-    getValidMoves(makeBoard([[pos(0,0), w('pawn')]]), pos(0,0));
-    getValidMoves(makeBoard([[pos(0,-1), w('pawn')]]), pos(0,-1));
-    getValidMoves(makeBoard([[pos(0,0), w('pawn')],[pos(0,1), b('pawn')]]), pos(0,0));
-    getValidMoves(makeBoard([[pos(0,-1), w('pawn')],[pos(0,0), b('pawn')]]), pos(0,-1));
-    getValidMoves(makeBoard([[pos(0,-1), w('pawn')],[pos(0,1), b('pawn')]]), pos(0,-1));
-    getValidMoves(makeBoard([[pos(0,0), w('pawn')],[pos(1,0), b('pawn')],[pos(-1,1), b('pawn')]]), pos(0,0));
-    getValidMoves(makeBoard([[pos(0,0), b('pawn')]]), pos(0,0));
-    getValidMoves(makeBoard([[pos(0,1), b('pawn')]]), pos(0,1));
-    getValidMoves(makeBoard([[pos(0,0), b('pawn')],[pos(-1,0), w('pawn')],[pos(1,-1), w('pawn')]]), pos(0,0));
-    getValidMoves(makeBoard([[pos(0,2), w('pawn')],[pos(1,1), b('pawn')]]), pos(0,2), pos(1,2));
-    getValidMoves(makeBoard([[pos(2,0), b('pawn')],[pos(1,-1), w('pawn')]]), pos(2,0), pos(1,0));
-    getValidMoves(makeBoard([[pos(0,2), w('pawn')],[pos(1,1), b('pawn')]]), pos(0,2), null);
-    getValidMoves(makeBoard([[pos(0,2), w('pawn')]]), pos(0,2));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('pawn')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,-1), w('pawn')]]), pos(0,-1));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('pawn')],[pos(0,1), b('pawn')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,-1), w('pawn')],[pos(0,0), b('pawn')]]), pos(0,-1));
+    getPseudoLegalMoves(makeBoard([[pos(0,-1), w('pawn')],[pos(0,1), b('pawn')]]), pos(0,-1));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), w('pawn')],[pos(1,0), b('pawn')],[pos(-1,1), b('pawn')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), b('pawn')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,1), b('pawn')]]), pos(0,1));
+    getPseudoLegalMoves(makeBoard([[pos(0,0), b('pawn')],[pos(-1,0), w('pawn')],[pos(1,-1), w('pawn')]]), pos(0,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,2), w('pawn')],[pos(1,1), b('pawn')]]), pos(0,2), pos(1,2));
+    getPseudoLegalMoves(makeBoard([[pos(2,0), b('pawn')],[pos(1,-1), w('pawn')]]), pos(2,0), pos(1,0));
+    getPseudoLegalMoves(makeBoard([[pos(0,2), w('pawn')],[pos(1,1), b('pawn')]]), pos(0,2), null);
+    getPseudoLegalMoves(makeBoard([[pos(0,2), w('pawn')]]), pos(0,2));
 });
 
-//isInCheck scenarios (each iterates all opponent pieces' moves)
+// isInCheck scenarios — reverse ray-cast, does not call getPseudoLegalMoves
 it('isInCheck scenarios', () => {
     isInCheck(makeBoard([[pos(0,0), w('king')],[pos(0,4), b('rook')]]), 'white');
     isInCheck(makeBoard([[pos(0,0), w('king')],[pos(2,2), b('bishop')]]), 'white');
@@ -120,10 +123,9 @@ it('getGameStatus scenarios', () => {
     getGameStatus(makeBoard([[pos(0,0), w('king')],[pos(0,4), b('rook')]]), 'white', null);
 });
 
-// Full legal-move enumeration for every piece in the starting position
-// Each getLegalMoves call: 1 getValidMoves for the piece + N_pseudolegal × 18
-// (isInCheck iterates all 18 opponent pieces). 18 white pieces × ~10 pseudolegal
-// × 18 black pieces ≈ 3,000+ additional board-state evaluations.
+// Full legal-move enumeration for every piece in the starting position.
+// Each getLegalMoves call contributes 1 getPseudoLegalMoves call (pseudo-legal
+// generation). isInCheck is now a ray-cast and adds zero calls here.
 
 it('getLegalMoves for every white piece in the starting position', () => {
     const board = generateBoard();
@@ -143,5 +145,8 @@ it('getLegalMoves for every black piece in the starting position', () => {
 
 afterAll(() => {
     console.log(`\n  Board states evaluated: ${boardStateCount}`);
-    expect(boardStateCount).toBeGreaterThan(2300);
+    // The reverse-lookup isInCheck no longer routes through getPseudoLegalMoves, so
+    // the count reflects only direct move-generation calls (~545 as of this
+    // refactor). A floor of 400 guards against accidental call-count regressions.
+    expect(boardStateCount).toBeGreaterThan(400);
 });

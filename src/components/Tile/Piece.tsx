@@ -14,9 +14,18 @@ const PIECE_MAP: Record<string, string> = {
     bishop: 'b', knight: 'n', pawn: 'p'
 };
 
+/** Module-level cache so `new URL(...)` is only evaluated once per unique key. */
+const srcCache = new Map<string, string>();
+
 export function pieceImageSrc(color: Color, type: PieceType, pieceSet: string): string {
     const c = color === 'white' ? 'w' : 'b';
-    return new URL(`../../assets/pieces/${pieceSet}/${c}${PIECE_MAP[type]}.png`, import.meta.url).href;
+    const filename = `${c}${PIECE_MAP[type]}`;
+    const key = `${pieceSet}/${filename}`;
+    const cached = srcCache.get(key);
+    if (cached) return cached;
+    const src = new URL(`../../assets/pieces/${pieceSet}/${filename}.png`, import.meta.url).href;
+    srcCache.set(key, src);
+    return src;
 }
 
 export function PieceSymbol({ piece, cx, cy, size, pieceSet, flipped }: PieceProps) {

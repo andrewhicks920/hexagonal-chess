@@ -1,4 +1,5 @@
 import { themes, type ThemeName } from '../../uiConfig.ts';
+import { pieceImageSrc } from '../Tile/Piece.tsx';
 import './Settings.css';
 
 const PIECE_SETS = [
@@ -28,7 +29,7 @@ export function Settings({ themeName, pieceSet, onThemeChange, onPieceSetChange,
                     <button className="settings-close" onClick={onClose}>✕</button>
                 </div>
 
-                <section>
+                <section className="settings-section">
                     <h3>Board Theme</h3>
                     <div className="theme-grid">
                         {(Object.keys(themes) as ThemeName[]).map(name => {
@@ -50,7 +51,7 @@ export function Settings({ themeName, pieceSet, onThemeChange, onPieceSetChange,
                     </div>
                 </section>
 
-                <section>
+                <section className="settings-section">
                     <h3>Piece Set</h3>
                     <div className="piece-grid">
                         {PIECE_SETS.map(set => (
@@ -61,7 +62,7 @@ export function Settings({ themeName, pieceSet, onThemeChange, onPieceSetChange,
                                 title={set}
                             >
                                 <img
-                                    src={new URL(`../../assets/pieces/${set}/wq.png`, import.meta.url).href}
+                                    src={pieceImageSrc('white', 'queen', set)}
                                     alt={set}
                                     width={48}
                                     height={48}

@@ -1,24 +1,79 @@
 import { type Cell, type Color, type Position, oppositeColor } from './types';
-import { samePos, applyMove } from './board';
-import { getValidMoves } from './pieces';
+import { samePos, applyMove, buildCellMap, isValidCell } from './board';
+import { getPseudoLegalMoves, ROOK_DIRS, BISHOP_DIRS, KNIGHT_MOVES, KING_DIRS } from './pieces';
 
 function findKing(cells: Cell[], color: Color): Position | null {
     const cell = cells.find(c => c.piece?.type === 'king' && c.piece.color === color);
     return cell ? { q: cell.q, r: cell.r } : null;
 }
 
-/** True if `color`'s king is attacked by any opponent pseudo-legal move. */
+/**
+ * True if `color`'s king is attacked by any opponent piece.
+ *
+ * Uses a reverse-lookup (ray-cast outward from the king) instead of generating
+ * every opponent move, reducing work from O(pieces × board) to O(board_rays).
+ */
 export function isInCheck(cells: Cell[], color: Color): boolean {
     const kingPos = findKing(cells, color);
     if (!kingPos) return false;
 
+    const { q, r } = kingPos;
     const opponent = oppositeColor(color);
-    for (const cell of cells) {
-        if (cell.piece?.color !== opponent) continue;
-        // En passant never threatens a king, so null is safe here.
-        const moves = getValidMoves(cells, { q: cell.q, r: cell.r }, null);
-        if (moves.some(m => samePos(m, kingPos))) return true;
+    const cellMap = buildCellMap(cells);
+
+    // Sliding attacks along rook directions (rook or queen)
+    for (const [dq, dr] of ROOK_DIRS) {
+        let cq = q + dq, cr = r + dr;
+        while (isValidCell(cq, cr)) {
+            const piece = cellMap.get(`${cq},${cr}`)?.piece;
+            if (piece) {
+                if (piece.color === opponent && (piece.type === 'rook' || piece.type === 'queen'))
+                    return true;
+                break; // own piece or wrong opponent piece blocks the ray
+            }
+            cq += dq; cr += dr;
+        }
     }
+
+    // Sliding attacks along bishop directions (bishop or queen)
+    for (const [dq, dr] of BISHOP_DIRS) {
+        let cq = q + dq, cr = r + dr;
+        while (isValidCell(cq, cr)) {
+            const piece = cellMap.get(`${cq},${cr}`)?.piece;
+            if (piece) {
+                if (piece.color === opponent && (piece.type === 'bishop' || piece.type === 'queen'))
+                    return true;
+                break;
+            }
+            cq += dq; cr += dr;
+        }
+    }
+
+    // Knight jumps
+    for (const [dq, dr] of KNIGHT_MOVES) {
+        const piece = cellMap.get(`${q + dq},${r + dr}`)?.piece;
+        if (piece?.color === opponent && piece.type === 'knight') return true;
+    }
+
+    // Adjacent king (prevents moving into the opponent king's zone)
+    for (const [dq, dr] of KING_DIRS) {
+        const piece = cellMap.get(`${q + dq},${r + dr}`)?.piece;
+        if (piece?.color === opponent && piece.type === 'king') return true;
+    }
+
+    // Pawn attacks
+    // A pawn of 'opponent' color at an attacker square can capture the king.
+    // White pawn captures: (+1,0) and (−1,+1) → attacker is at (q−1,r) or (q+1,r−1)
+    // Black pawn captures: (−1,0) and (+1,−1) → attacker is at (q+1,r) or (q−1,r+1)
+    const pawnAttackerDirs: [number, number][] = opponent === 'white'
+        ? [[-1, 0], [1, -1]]
+        : [[ 1, 0], [-1,  1]];
+
+    for (const [dq, dr] of pawnAttackerDirs) {
+        const piece = cellMap.get(`${q + dq},${r + dr}`)?.piece;
+        if (piece?.color === opponent && piece.type === 'pawn') return true;
+    }
+
     return false;
 }
 
@@ -32,7 +87,7 @@ export function getLegalMoves(
     if (!cell?.piece) return [];
 
     const { color } = cell.piece;
-    return getValidMoves(cells, pos, enPassantTarget).filter(to => {
+    return getPseudoLegalMoves(cells, pos, enPassantTarget).filter(to => {
         const after = applyMove(cells, pos, to, enPassantTarget, color);
         return !isInCheck(after, color);
     });
