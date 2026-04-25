@@ -11,13 +11,11 @@
  * All scenarios run in one worker so the counter accumulates correctly.
  */
 
-import { it, expect, afterAll } from 'vitest';
-import { getPseudoLegalMoves, resetBoardStateCount, boardStateCount } from '../pieces';
+import { it } from 'vitest';
+import { getPseudoLegalMoves } from '../pieces';
 import { getLegalMoves, isInCheck, getGameStatus } from '../gameLogic';
 import { generateBoard } from '../board';
 import { pos, w, b, makeBoard, allValidCells } from './helpers';
-
-resetBoardStateCount();
 
 // All piece types from every valid cell (455 direct evaluations)
 it('every piece type from every valid cell', () => {
@@ -141,12 +139,4 @@ it('getLegalMoves for every black piece in the starting position', () => {
         if (cell.piece?.color === 'black')
             getLegalMoves(board, pos(cell.q, cell.r), null);
     }
-});
-
-afterAll(() => {
-    console.log(`\n  Board states evaluated: ${boardStateCount}`);
-    // The reverse-lookup isInCheck no longer routes through getPseudoLegalMoves, so
-    // the count reflects only direct move-generation calls (~545 as of this
-    // refactor). A floor of 400 guards against accidental call-count regressions.
-    expect(boardStateCount).toBeGreaterThan(400);
 });
