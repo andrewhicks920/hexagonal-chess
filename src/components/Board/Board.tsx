@@ -1,5 +1,6 @@
 import { toPixel, isValidCell, hexVertices } from '../../game/board.ts';
 import { HexTileFill } from '../Tile/Tile.tsx';
+import { pieceImageSrc } from '../Tile/Piece.tsx';
 import type { Cell, Color, PieceType, Position } from '../../game/types.ts';
 import './Board.css';
 
@@ -8,10 +9,6 @@ const VIEW_W = 17 * CELL_SIZE;
 const VIEW_H = 11 * Math.sqrt(3) * CELL_SIZE;
 const HEX_H = (CELL_SIZE * Math.sqrt(3)) / 2;
 const LABEL_PAD = 50;
-
-const PIECE_MAP: Record<string, string> = {
-    queen: 'q', rook: 'r', bishop: 'b', knight: 'n',
-};
 
 const PROMOTION_PIECES: PieceType[] = ['queen', 'rook', 'bishop', 'knight'];
 
@@ -34,31 +31,54 @@ function buildGridPath(size: number): string {
 
 const GRID_PATH = buildGridPath(CELL_SIZE);
 
-const FILE_LABELS = Array.from(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'k', 'l'], (label, i) => {
-    const q = i - 5;
-    const rMin = Math.max(-5, -5 - q);
-    const { x, y } = toPixel(q, rMin, CELL_SIZE);
-    return { label, x: x, y: y + HEX_H + 25 };
-});
+function buildFileLabels(flipped: boolean) {
+    return Array.from(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'k', 'l'], (label, i) => {
+        const q = i - 5;
+        const r = flipped ? Math.min(5, 5 - q) : Math.max(-5, -5 - q);
+        const { x, y } = toPixel(q, r, CELL_SIZE);
 
-const RANK_LABELS = Array.from({ length: 11 }, (_, i) => {
-    const rank = i + 1;
-    const sum = rank - 6;
-    const q = Math.max(-5, sum - 5);
-    const r = sum - q;
-    const { x, y } = toPixel(q, r, CELL_SIZE);
-    if (rank >= 6) {
-        const topRightHexCornerPos = hexVertices(x, y, CELL_SIZE)[4];
-        return { label: rank, x: topRightHexCornerPos[0] - 10, y: topRightHexCornerPos[1] - 10 };
-    } else {
-        const bottomLeftHexCornerPos = hexVertices(x, y, CELL_SIZE)[3];
-        return { label: rank, x: bottomLeftHexCornerPos[0] - 10, y: bottomLeftHexCornerPos[1] };
-    }
-});
+        if (flipped)
+            return { label, x, y: y - HEX_H - 25 };
 
-function pieceImageSrc(color: Color, type: PieceType, pieceSet: string): string {
-    const c = color === 'white' ? 'w' : 'b';
-    return new URL(`../../assets/pieces/${pieceSet}/${c}${PIECE_MAP[type]}.png`, import.meta.url).href;
+        else
+            return { label, x, y: y + HEX_H + 25 };
+    });
+}
+
+function buildRankLabels(flipped: boolean) {
+    return Array.from({ length: 11 }, (_, i) => {
+        const rank = i + 1;
+        const sum = rank - 6;
+
+        // Flipped uses the right hexagonal edge; normal uses the left edge.
+        const q = flipped ? Math.min(5, sum + 5) : Math.max(-5, sum - 5);
+        const r = sum - q;
+        const { x, y } = toPixel(q, r, CELL_SIZE);
+
+        if (flipped) { // Use the rightmost cell of the rank — after rotate(180) this appears on the left
+
+            if (rank > 6) {
+                const v = hexVertices(x, y, CELL_SIZE)[0]; // middle-left vertex
+                return { label: rank, x: v[0] + 10, y: v[1] - 5 };
+            }
+            else {
+                const v = hexVertices(x, y, CELL_SIZE)[1]; // top-left vertex
+                return { label: rank, x: v[0] + 10, y: v[1] + 10};
+            }
+        }
+
+        else {
+
+            if (rank >= 6) {
+                const v = hexVertices(x, y, CELL_SIZE)[4]; // top-left vertex
+                return { label: rank, x: v[0] - 10, y: v[1] - 10 };
+            }
+            else {
+                const v = hexVertices(x, y, CELL_SIZE)[3]; // left-middle vertex
+                return { label: rank, x: v[0] - 10, y: v[1] };
+            }
+        }
+    });
 }
 
 interface BoardProps {
@@ -71,6 +91,7 @@ interface BoardProps {
     promotionPending: Position | null;
     confirmPromotion: (pieceType: PieceType) => void;
     pieceSet: string;
+    flipped?: boolean;
 }
 
 export function Board({
@@ -83,6 +104,7 @@ export function Board({
     promotionPending,
     confirmPromotion,
     pieceSet,
+    flipped = false,
 }: BoardProps) {
     const validMoveSet = new Set(validMoves.map(p => `${p.q},${p.r}`));
 
@@ -93,6 +115,9 @@ export function Board({
 
     const isGameOver = gameStatus === 'checkmate' || gameStatus === 'stalemate';
 
+    const fileLabels = buildFileLabels(flipped);
+    const rankLabels = buildRankLabels(flipped);
+
     return (
         <div className="board-wrapper">
             <svg
@@ -101,53 +126,68 @@ export function Board({
                 width="100%"
                 height="100%"
             >
-                {cells.map(cell => {
-                    const { x, y } = toPixel(cell.q, cell.r, CELL_SIZE);
-                    const key = `${cell.q},${cell.r}`;
-                    const isSelected = selectedPos?.q === cell.q && selectedPos?.r === cell.r;
-                    const isHighlight = validMoveSet.has(key);
-                    const isCheck = key === checkKey;
-                    const isClickable =
-                        !promotionPending &&
-                        !isGameOver &&
-                        (!!cell.piece || isHighlight);
+                <g transform={flipped ? 'rotate(180)' : undefined}>
+                    {cells.map(cell => {
+                        const { x, y } = toPixel(cell.q, cell.r, CELL_SIZE);
+                        const key = `${cell.q},${cell.r}`;
+                        const isSelected = selectedPos?.q === cell.q && selectedPos?.r === cell.r;
+                        const isHighlight = validMoveSet.has(key);
+                        const isCheck = key === checkKey;
+                        const isClickable =
+                            !promotionPending &&
+                            !isGameOver &&
+                            (!!cell.piece || isHighlight);
 
-                    return (
-                        <HexTileFill
-                            key={`fill-${key}`}
-                            cell={cell}
+                        return (
+                            <HexTileFill
+                                key={`fill-${key}`}
+                                cell={cell}
+                                x={x}
+                                y={y}
+                                size={CELL_SIZE}
+                                isSelected={isSelected}
+                                isHighlight={isHighlight}
+                                isCheck={isCheck}
+                                isClickable={isClickable}
+                                pieceSet={pieceSet}
+                                flipped={flipped}
+                                onClick={() => handleCellClick(cell.q, cell.r)}
+                            />
+                        );
+                    })}
+
+                    <path
+                        d={GRID_PATH}
+                        stroke="#111"
+                        strokeWidth={2}
+                        fill="none"
+                        style={{ pointerEvents: 'none' }}
+                    />
+
+                    {fileLabels.map(({ label, x, y }) => (
+                        <text
+                            key={`file-${label}`}
+                            className="file-label"
                             x={x}
                             y={y}
-                            size={CELL_SIZE}
-                            isSelected={isSelected}
-                            isHighlight={isHighlight}
-                            isCheck={isCheck}
-                            isClickable={isClickable}
-                            pieceSet={pieceSet}
-                            onClick={() => handleCellClick(cell.q, cell.r)}
-                        />
-                    );
-                })}
+                            transform={flipped ? `rotate(180, ${x}, ${y})` : undefined}
+                        >
+                            {label}
+                        </text>
+                    ))}
 
-                <path
-                    d={GRID_PATH}
-                    stroke="#111"
-                    strokeWidth={2}
-                    fill="none"
-                    style={{ pointerEvents: 'none' }}
-                />
-
-                {FILE_LABELS.map(({ label, x, y }) => (
-                    <text key={`file-${label}`} className="file-label" x={x} y={y}>
-                        {label}
-                    </text>
-                ))}
-
-                {RANK_LABELS.map(({ label, x, y }) => (
-                    <text key={`rank-${label}`} className="rank-label" x={x} y={y}>
-                        {label}
-                    </text>
-                ))}
+                    {rankLabels.map(({ label, x, y }) => (
+                        <text
+                            key={`rank-${label}`}
+                            className="rank-label"
+                            x={x}
+                            y={y}
+                            transform={flipped ? `rotate(180, ${x}, ${y})` : undefined}
+                        >
+                            {label}
+                        </text>
+                    ))}
+                </g>
             </svg>
 
             {promotionPending && (

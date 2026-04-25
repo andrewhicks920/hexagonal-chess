@@ -1,4 +1,4 @@
-import type { Piece } from '../../game/types.ts';
+import type { Color, PieceType, Piece } from '../../game/types.ts';
 
 interface PieceProps {
     piece: Piece;
@@ -6,6 +6,7 @@ interface PieceProps {
     cy: number;
     size: number;
     pieceSet: string;
+    flipped?: boolean;
 }
 
 const PIECE_MAP: Record<string, string> = {
@@ -13,14 +14,13 @@ const PIECE_MAP: Record<string, string> = {
     bishop: 'b', knight: 'n', pawn: 'p'
 };
 
+export function pieceImageSrc(color: Color, type: PieceType, pieceSet: string): string {
+    const c = color === 'white' ? 'w' : 'b';
+    return new URL(`../../assets/pieces/${pieceSet}/${c}${PIECE_MAP[type]}.png`, import.meta.url).href;
+}
 
-// Generate filename (e.g., 'w' + 'k' = 'wk')
-export function PieceSymbol({ piece, cx, cy, size, pieceSet }: PieceProps) {
-    const color = piece.color === 'white' ? 'w' : 'b';
-    const pieceType = PIECE_MAP[piece.type];
-
-    const src = new URL(`../../assets/pieces/${pieceSet}/${color}${pieceType}.png`, import.meta.url).href;
-
+export function PieceSymbol({ piece, cx, cy, size, pieceSet, flipped }: PieceProps) {
+    const src = pieceImageSrc(piece.color, piece.type, pieceSet);
     return (
         <image
             href={src}
@@ -29,6 +29,7 @@ export function PieceSymbol({ piece, cx, cy, size, pieceSet }: PieceProps) {
             width={size * 2}
             height={size * 2}
             style={{pointerEvents: 'none'}}
+            transform={flipped ? `rotate(180, ${cx}, ${cy})` : undefined}
         />
     );
 }
