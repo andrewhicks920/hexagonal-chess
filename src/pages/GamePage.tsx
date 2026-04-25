@@ -178,7 +178,10 @@ export function GamePage({ mode, themeName, pieceSet, onThemeChange, onPieceSetC
                             {statusMessage}
                         </div>
                     )}
-                    <button className="new-game-btn" onClick={resetGame}>
+                    <button className="new-game-btn" onClick={() => {
+                        resetGame();
+                        if (mode === 'bot') setBotReady(false);
+                    }}>
                         + New Game
                     </button>
                 </div>
