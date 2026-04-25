@@ -9,7 +9,7 @@
     gap: 48px;
 }
 
-/* Board preview (GIF stand-in) */
+/* Board preview */
 .landing-board-preview {
     flex: 0 0 auto;
     width: min(420px, 42vw);
@@ -17,16 +17,95 @@
     border-radius: 12px;
     overflow: hidden;
     position: relative;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* Carousel */
+.carousel {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+.carousel-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    background: #f2e8d5;
+    animation: carousel-fadein 0.3s ease;
+}
+
+@keyframes carousel-fadein {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.carousel-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-60%); /* shift up slightly to clear footer */
+    background: rgba(0, 0, 0, 0);
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    font-size: 1.3rem;
+    line-height: 1;
+    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
+    color: #81b64c;
+    transition: background 0.15s;
+    z-index: 1;
 }
 
-.landing-board-preview img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
+.carousel-btn:hover { background: rgba(255, 255, 255, 0.97); }
+
+.carousel-btn--prev { left: 8px; }
+.carousel-btn--next { right: 8px; }
+
+.carousel-footer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(0, 0, 0, 0);
+    padding: 7px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.carousel-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #333;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.carousel-dots {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+}
+
+.carousel-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0, 0, 0, 0.22);
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.15s, transform 0.15s;
+}
+
+.carousel-dot--active {
+    background: #81b64c;
+    transform: scale(1.35);
 }
 
 /* Right: copy + mode buttons */
@@ -43,7 +122,7 @@
     font-size: clamp(1.6rem, 3vw, 2.4rem);
     font-weight: 800;
     line-height: 1.15;
-    color: #f0ece7;
+    color: #f2e8d5;
     letter-spacing: -0.01em;
 }
 
@@ -76,7 +155,7 @@
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s, transform 0.1s;
     text-align: left;
-    color: #e8e3de;
+    color: #f2e8d5;
     font-family: inherit;
     width: 100%;
 }

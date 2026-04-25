@@ -1,12 +1,85 @@
-import { useState } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Settings } from '../components/Settings/Settings.tsx';
 import { TopBar } from '../components/TopBar/TopBar.tsx';
 import { type ThemeName } from '../uiConfig.ts';
+import { NAV_ICONS } from '../uiConfig.ts';
 import '../App.css';
 import './LandingPage.css';
-import {NAV_ICONS} from "../uiConfig.ts";
-import * as React from "react";
+
+import boardImg  from '../assets/carouselImages/Glinski_Chess_Board.svg';
+import pawnImg   from '../assets/carouselImages/Glinski_Chess_Pawn.svg';
+import knightImg from '../assets/carouselImages/Glinski_Chess_Knight.svg';
+import bishopImg from '../assets/carouselImages/Glinski_Chess_Bishop.svg';
+import rookImg   from '../assets/carouselImages/Glinski_Chess_Rook.svg';
+import queenImg  from '../assets/carouselImages/Glinski_Chess_Queen.svg';
+import kingImg   from '../assets/carouselImages/Glinski_Chess_King.svg';
+
+const SLIDES = [
+    { src: boardImg,  label: 'Board' },
+    { src: pawnImg,   label: 'Pawn'   },
+    { src: knightImg, label: 'Knight' },
+    { src: bishopImg, label: 'Bishop' },
+    { src: rookImg,   label: 'Rook'   },
+    { src: queenImg,  label: 'Queen'  },
+    { src: kingImg,   label: 'King'   },
+] as const;
+
+const SLIDE_INTERVAL = 3500;
+
+function PieceCarousel() {
+    const [index, setIndex] = useState(0);
+    const [paused, setPaused] = useState(false);
+
+    useEffect(() => {
+        if (paused) return;
+        const id = setInterval(() => {setIndex(prev => (prev + 1) % SLIDES.length);}, SLIDE_INTERVAL);
+
+        return () => clearInterval(id);
+    }, [paused]);
+
+    function go(delta: number) {
+        setIndex(prev => (prev + delta + SLIDES.length) % SLIDES.length);
+    }
+
+    const { src, label } = SLIDES[index];
+
+    return (
+        <div
+            className="carousel"
+            onMouseEnter={() => setPaused(true)}
+            onMouseLeave={() => setPaused(false)}
+        >
+            <img
+                key={index}
+                className="carousel-img"
+                src={src}
+                alt={`${label} movement diagram`}
+            />
+
+            <button className="carousel-btn carousel-btn--prev" onClick={() => go(-1)} aria-label="Previous">
+                ‹
+            </button>
+            <button className="carousel-btn carousel-btn--next" onClick={() => go(1)} aria-label="Next">
+                ›
+            </button>
+
+            <div className="carousel-footer">
+                <span className="carousel-label">{label}</span>
+                <div className="carousel-dots">
+                    {SLIDES.map((slide, i) => (
+                        <button
+                            key={slide.label}
+                            className={`carousel-dot${i === index ? ' carousel-dot--active' : ''}`}
+                            onClick={() => setIndex(i)}
+                            aria-label={slide.label}
+                        />
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
 
 interface LandingPageProps {
     themeName: ThemeName;
@@ -15,22 +88,8 @@ interface LandingPageProps {
     onPieceSetChange: (p: string) => void;
 }
 
-function BoardPreview() {
-    const [imgError, setImgError] = useState(false);
-
-    if (!imgError) {
-        return (
-            <img
-                src={`${import.meta.env.BASE_URL}hex-demo.gif`}
-                alt="Hexagonal chess demo"
-                onError={() => setImgError(true)}
-            />
-        );
-    }
-}
-
 interface ModeCardProps {
-    icon: React.ReactNode;
+    icon: ReactNode;
     title: string;
     desc: string;
     badge?: string;
@@ -67,12 +126,10 @@ export function LandingPage({ themeName, pieceSet, onThemeChange, onPieceSetChan
             <TopBar onSettingsOpen={() => setSettingsOpen(true)} />
 
             <main className="landing-main">
-                {/* Board GIF / placeholder */}
                 <div className="landing-board-preview">
-                    <BoardPreview />
+                    <PieceCarousel />
                 </div>
 
-                {/* Copy + mode selection */}
                 <section className="landing-hero">
                     <div>
                         <h1 className="landing-headline">
@@ -85,20 +142,20 @@ export function LandingPage({ themeName, pieceSet, onThemeChange, onPieceSetChan
 
                     <div className="landing-modes">
                         <ModeCard
-                            icon={<span className="chessglyph">{'\u0077'}</span>}
+                            icon={<span className="chessglyph">{'w'}</span>}
                             title="Play Local"
                             desc="Two players on the same device"
                             primary
                             onClick={() => navigate('/play/local')}
                         />
                         <ModeCard
-                            icon={<span className="chessglyph">{'\u00F6'}</span>}
+                            icon={<span className="chessglyph">{'ö'}</span>}
                             title="vs Computer"
                             desc="Challenge an AI opponent"
                             onClick={() => navigate('/play/bot')}
                         />
                         <ModeCard
-                            icon={<span className="chessglyph">{'\u004D'}</span>}
+                            icon={<span className="chessglyph">{'M'}</span>}
                             title="Play Online"
                             desc="Compete against players worldwide"
                             badge="Coming Soon"
