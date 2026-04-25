@@ -63,7 +63,7 @@ export function LandingPage({ themeName, pieceSet, onThemeChange, onPieceSetChan
     const [settingsOpen, setSettingsOpen] = useState(false);
 
     return (
-        <div className="landing-shell">
+        <div className="app-shell">
             <TopBar onSettingsOpen={() => setSettingsOpen(true)} />
 
             <main className="landing-main">

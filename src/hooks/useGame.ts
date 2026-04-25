@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { type Cell, type Color, type Piece, type PieceType, type Position, type MoveRecord } from '../game/types';
+import { type Cell, type Color, type Piece, type PieceType, type Position, type MoveRecord, oppositeColor } from '../game/types';
 import { generateBoard, samePos, applyMove } from '../game/board';
 import { getLegalMoves, getGameStatus, isPromotionSquare } from '../game/gameLogic';
 
@@ -9,8 +9,10 @@ const PIECE_LETTERS: Record<PieceType, string> = {
     king: 'K', queen: 'Q', rook: 'R', bishop: 'B', knight: 'N', pawn: '',
 };
 
-const PROMO_LETTERS: Record<PieceType, string> = {
-    queen: 'Q', rook: 'R', bishop: 'B', knight: 'N', king: '', pawn: '',
+type PromoPieceType = 'queen' | 'rook' | 'bishop' | 'knight';
+
+const PROMO_LETTERS: Record<PromoPieceType, string> = {
+    queen: 'Q', rook: 'R', bishop: 'B', knight: 'N',
 };
 
 function fileOf(pos: Position): string { return FILES[pos.q + 5] ?? '?'; }
@@ -112,117 +114,21 @@ export function useGame() {
     const [moveHistory, setMoveHistory] = useState<MoveRecord[]>([]);
     const [promotionBaseNotation, setPromotionBaseNotation] = useState<string | null>(null);
 
-    const handleCellClick = useCallback((q: number, r: number) => {
-        if (promotionPending) return;
-        if (gameStatus === 'checkmate' || gameStatus === 'stalemate') return;
-
-        const clicked: Position = { q, r };
-        const clickedCell = cells.find(c => c.q === q && c.r === r);
-
-        // Execute a valid move
-        if (selectedPos && validMoves.some(m => samePos(m, clicked))) {
-            const movingPiece = cells.find(c => samePos(c, selectedPos))!.piece!;
-
-            const isPawnDouble =
-                movingPiece.type === 'pawn' && Math.abs(clicked.r - selectedPos.r) === 2;
-            const newEnPassantTarget: Position | null = isPawnDouble
-                ? { q: clicked.q, r: (selectedPos.r + clicked.r) / 2 }
-                : null;
-
-            const normalCapture = cells.find(c => samePos(c, clicked))?.piece ?? null;
-            const epCapR = enPassantTarget
-                ? enPassantTarget.r + (movingPiece.color === 'white' ? -1 : 1)
-                : null;
-            const epCapture =
-                enPassantTarget && samePos(clicked, enPassantTarget) && epCapR !== null
-                    ? cells.find(c => c.q === enPassantTarget.q && c.r === epCapR)?.piece ?? null
-                    : null;
-            const captured = normalCapture ?? epCapture;
-
-            if (captured) {
-                if (movingPiece.color === 'white')
-                    setCapturedByWhite(prev => [...prev, captured]);
-                else
-                    setCapturedByBlack(prev => [...prev, captured]);
-            }
-
-            // Snapshot the board BEFORE the move for disambiguation
-            const preMoveBoard = cells;
-
-            const newCells = applyMove(cells, selectedPos, clicked, enPassantTarget, movingPiece.color);
-            const nextTurn: Color = currentTurn === 'white' ? 'black' : 'white';
-            const isPromotion =
-                movingPiece.type === 'pawn' &&
-                isPromotionSquare(clicked.q, clicked.r, movingPiece.color);
-
-            setCells(newCells);
-            setEnPassantTarget(newEnPassantTarget);
-            setSelectedPos(null);
-            setValidMoves([]);
-
-            if (isPromotion) {
-                const baseNotation = buildNotation(
-                    movingPiece, selectedPos, clicked, !!captured, '',
-                    preMoveBoard, enPassantTarget,
-                );
-                setPromotionBaseNotation(baseNotation);
-                setMoveHistory(prev => addToHistory(prev, movingPiece.color, baseNotation + '=?'));
-                setPromotionPending(clicked);
-            } else {
-                const nextStatus = getGameStatus(newCells, nextTurn, newEnPassantTarget);
-                const notation = buildNotation(
-                    movingPiece, selectedPos, clicked, !!captured, nextStatus,
-                    preMoveBoard, enPassantTarget,
-                );
-                setMoveHistory(prev => addToHistory(prev, movingPiece.color, notation));
-                setCurrentTurn(nextTurn);
-                setGameStatus(nextStatus);
-            }
-            return;
-        }
-
-        // Select own piece
-        if (clickedCell?.piece?.color === currentTurn) {
-            setSelectedPos(clicked);
-            setValidMoves(getLegalMoves(cells, clicked, enPassantTarget));
-            return;
-        }
-
-        // Deselect
-        setSelectedPos(null);
-        setValidMoves([]);
-    }, [cells, currentTurn, selectedPos, validMoves, enPassantTarget, gameStatus, promotionPending]);
-
-    const resetGame = useCallback(() => {
-        setCells(generateBoard());
-        setCurrentTurn('white');
-        setSelectedPos(null);
-        setValidMoves([]);
-        setEnPassantTarget(null);
-        setGameStatus('playing');
-        setCapturedByWhite([]);
-        setCapturedByBlack([]);
-        setPromotionPending(null);
-        setMoveHistory([]);
-        setPromotionBaseNotation(null);
-    }, []);
-
-    const executeBotMove = useCallback((from: Position, to: Position) => {
-        const movingPiece = cells.find(c => c.q === from.q && c.r === from.r)?.piece;
+    const executeMove = useCallback((from: Position, to: Position) => {
+        const movingPiece = cells.find(c => samePos(c, from))?.piece;
         if (!movingPiece) return;
 
-        const isPawnDouble =
-            movingPiece.type === 'pawn' && Math.abs(to.r - from.r) === 2;
+        const isPawnDouble = movingPiece.type === 'pawn' && Math.abs(to.r - from.r) === 2;
         const newEnPassantTarget: Position | null = isPawnDouble
             ? { q: to.q, r: (from.r + to.r) / 2 }
             : null;
 
-        const normalCapture = cells.find(c => c.q === to.q && c.r === to.r)?.piece ?? null;
+        const normalCapture = cells.find(c => samePos(c, to))?.piece ?? null;
         const epCapR = enPassantTarget
             ? enPassantTarget.r + (movingPiece.color === 'white' ? -1 : 1)
             : null;
         const epCapture =
-            enPassantTarget && to.q === enPassantTarget.q && to.r === enPassantTarget.r && epCapR !== null
+            enPassantTarget && samePos(to, enPassantTarget) && epCapR !== null
                 ? cells.find(c => c.q === enPassantTarget.q && c.r === epCapR)?.piece ?? null
                 : null;
         const captured = normalCapture ?? epCapture;
@@ -236,10 +142,8 @@ export function useGame() {
 
         const preMoveBoard = cells;
         const newCells = applyMove(cells, from, to, enPassantTarget, movingPiece.color);
-        const nextTurn: Color = currentTurn === 'white' ? 'black' : 'white';
-        const isPromotion =
-            movingPiece.type === 'pawn' &&
-            isPromotionSquare(to.q, to.r, movingPiece.color);
+        const nextTurn = oppositeColor(currentTurn);
+        const isPromotion = movingPiece.type === 'pawn' && isPromotionSquare(to.q, to.r, movingPiece.color);
 
         setCells(newCells);
         setEnPassantTarget(newEnPassantTarget);
@@ -266,6 +170,42 @@ export function useGame() {
         }
     }, [cells, currentTurn, enPassantTarget]);
 
+    const handleCellClick = useCallback((q: number, r: number) => {
+        if (promotionPending) return;
+        if (gameStatus === 'checkmate' || gameStatus === 'stalemate') return;
+
+        const clicked: Position = { q, r };
+        const clickedCell = cells.find(c => c.q === q && c.r === r);
+
+        if (selectedPos && validMoves.some(m => samePos(m, clicked))) {
+            executeMove(selectedPos, clicked);
+            return;
+        }
+
+        if (clickedCell?.piece?.color === currentTurn) {
+            setSelectedPos(clicked);
+            setValidMoves(getLegalMoves(cells, clicked, enPassantTarget));
+            return;
+        }
+
+        setSelectedPos(null);
+        setValidMoves([]);
+    }, [cells, currentTurn, selectedPos, validMoves, enPassantTarget, gameStatus, promotionPending, executeMove]);
+
+    const resetGame = useCallback(() => {
+        setCells(generateBoard());
+        setCurrentTurn('white');
+        setSelectedPos(null);
+        setValidMoves([]);
+        setEnPassantTarget(null);
+        setGameStatus('playing');
+        setCapturedByWhite([]);
+        setCapturedByBlack([]);
+        setPromotionPending(null);
+        setMoveHistory([]);
+        setPromotionBaseNotation(null);
+    }, []);
+
     const confirmPromotion = useCallback((pieceType: PieceType) => {
         if (!promotionPending) return;
         const color = currentTurn;
@@ -274,10 +214,10 @@ export function useGame() {
                 ? { ...cell, piece: { type: pieceType, color } }
                 : cell,
         );
-        const nextTurn: Color = currentTurn === 'white' ? 'black' : 'white';
+        const nextTurn = oppositeColor(currentTurn);
         const nextStatus = getGameStatus(newCells, nextTurn, enPassantTarget);
         const checkSym = nextStatus === 'checkmate' ? '#' : nextStatus === 'check' ? '+' : '';
-        const fullNotation = (promotionBaseNotation ?? '') + `=${PROMO_LETTERS[pieceType]}${checkSym}`;
+        const fullNotation = (promotionBaseNotation ?? '') + `=${PROMO_LETTERS[pieceType as PromoPieceType]}${checkSym}`;
 
         setMoveHistory(prev => {
             const last = prev[prev.length - 1];
@@ -302,7 +242,7 @@ export function useGame() {
         selectedPos,
         validMoves,
         handleCellClick,
-        executeBotMove,
+        executeBotMove: executeMove,
         gameStatus,
         capturedByWhite,
         capturedByBlack,

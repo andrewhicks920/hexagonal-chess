@@ -10,8 +10,6 @@ import { getBotMove, type Difficulty } from '../game/ai.ts';
 import { themes, type ThemeName } from '../uiConfig.ts';
 import type { Color } from '../game/types.ts';
 import '../App.css';
-import './LandingPage.css';
-import '../index.css';
 
 function PlayerAvatar({ color }: { color: 'white' | 'black' }) {
     const bg = color === 'white' ? '#9f9689' : '#555353';
@@ -98,10 +96,6 @@ export function GamePage({ mode, themeName, pieceSet, onThemeChange, onPieceSetC
         confirmPromotion('queen');
     }, [mode, botReady, promotionPending, currentTurn, botColor, confirmPromotion]);
 
-    // Reset bot state when "New Game" is clicked — keep same settings
-    const handleReset = useCallback(() => {
-        resetGame();
-    }, [resetGame]);
 
     function handleBotStart(color: Color, diff: Difficulty) {
         setPlayerColor(color);
@@ -184,8 +178,8 @@ export function GamePage({ mode, themeName, pieceSet, onThemeChange, onPieceSetC
                             {statusMessage}
                         </div>
                     )}
-                    <button className="new-game-btn" onClick={handleReset}>
-                        + New Gamee
+                    <button className="new-game-btn" onClick={resetGame}>
+                        + New Game
                     </button>
                 </div>
             </aside>

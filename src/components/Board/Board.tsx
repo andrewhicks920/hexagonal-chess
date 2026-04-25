@@ -1,5 +1,6 @@
 import { toPixel, isValidCell, hexVertices } from '../../game/board.ts';
 import { HexTileFill } from '../Tile/Tile.tsx';
+import { pieceImageSrc } from '../Tile/Piece.tsx';
 import type { Cell, Color, PieceType, Position } from '../../game/types.ts';
 import './Board.css';
 
@@ -8,10 +9,6 @@ const VIEW_W = 17 * CELL_SIZE;
 const VIEW_H = 11 * Math.sqrt(3) * CELL_SIZE;
 const HEX_H = (CELL_SIZE * Math.sqrt(3)) / 2;
 const LABEL_PAD = 50;
-
-const PIECE_MAP: Record<string, string> = {
-    queen: 'q', rook: 'r', bishop: 'b', knight: 'n',
-};
 
 const PROMOTION_PIECES: PieceType[] = ['queen', 'rook', 'bishop', 'knight'];
 
@@ -82,11 +79,6 @@ function buildRankLabels(flipped: boolean) {
             }
         }
     });
-}
-
-function pieceImageSrc(color: Color, type: PieceType, pieceSet: string): string {
-    const c = color === 'white' ? 'w' : 'b';
-    return new URL(`../../assets/pieces/${pieceSet}/${c}${PIECE_MAP[type]}.png`, import.meta.url).href;
 }
 
 interface BoardProps {

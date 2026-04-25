@@ -1,4 +1,4 @@
-import { type Cell, type Color, type Position } from './types';
+import { type Cell, type Color, type Position, oppositeColor } from './types';
 import { samePos, applyMove } from './board';
 import { getValidMoves } from './pieces';
 
@@ -12,7 +12,7 @@ export function isInCheck(cells: Cell[], color: Color): boolean {
     const kingPos = findKing(cells, color);
     if (!kingPos) return false;
 
-    const opponent: Color = color === 'white' ? 'black' : 'white';
+    const opponent = oppositeColor(color);
     for (const cell of cells) {
         if (cell.piece?.color !== opponent) continue;
         // En passant never threatens a king, so null is safe here.

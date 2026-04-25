@@ -1,15 +1,3 @@
-.landing-shell {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    width: 100vw;
-    overflow: hidden;
-    background: #262421;
-    color: #e8e3de;
-    font-family: 'Noto Sans', 'Segoe UI', Arial, sans-serif;
-}
-
-/* Hero */
 .landing-main {
     flex: 1;
     display: flex;
@@ -39,15 +27,6 @@
     height: 100%;
     object-fit: cover;
     display: block;
-}
-
-
-
-.landing-board-placeholder-label {
-    font-size: 0.78rem;
-    color: #6a6866;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
 }
 
 /* Right: copy + mode buttons */
@@ -183,6 +162,3 @@
     }
 }
 
-.chessglyph {
-    font-family: 'chessglyph', sans-serif;
-}

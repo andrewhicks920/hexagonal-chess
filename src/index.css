@@ -6,15 +6,6 @@
     font-display: swap;
 }
 
-@font-face {
-    font-family: 'chesscom-sans';
-    src: url('./assets/fonts/chesscom-sans.woff2') format('woff2');
-    font-weight: normal;
-    font-style: normal;
-    font-display: swap;
-}
-
-
 * { /* Gets rid of margin around edge of page */
     margin: 0;
     padding: 0;
@@ -23,6 +14,11 @@
 
 body {
     background: #262421;
+    color: #e8e3de;
     overflow: hidden;
     font-family: 'Noto Sans', 'Segoe UI', Arial, sans-serif;
+}
+
+.chessglyph {
+    font-family: 'chessglyph', sans-serif;
 }

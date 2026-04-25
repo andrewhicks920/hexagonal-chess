@@ -1,4 +1,4 @@
-import { type Cell, type Color, type Position, type PieceType } from './types';
+import { type Cell, type Color, type Position, type PieceType, oppositeColor } from './types';
 import { getLegalMoves, getGameStatus } from './gameLogic';
 import { applyMove } from './board';
 
@@ -56,7 +56,7 @@ function minimax(
     botColor: Color,
     enPassantTarget: Position | null,
 ): number {
-    const sideToMove: Color = maximizing ? botColor : (botColor === 'white' ? 'black' : 'white');
+    const sideToMove: Color = maximizing ? botColor : oppositeColor(botColor);
     const status = getGameStatus(cells, sideToMove, enPassantTarget);
 
     if (status === 'checkmate') return maximizing ? -1_000_000 : 1_000_000;

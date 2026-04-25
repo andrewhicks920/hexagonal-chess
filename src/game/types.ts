@@ -42,3 +42,7 @@ export interface MoveRecord {
   white?: string;
   black?: string;
 }
+
+export function oppositeColor(color: Color): Color {
+    return color === 'white' ? 'black' : 'white';
+}

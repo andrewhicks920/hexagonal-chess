@@ -97,12 +97,7 @@ function knightMoves(cells: Cell[], pos: Position, color: Color): Position[] {
 
 // White moves visually upward: straight (0,+1), captures (+1,0) and (−1,+1)
 // Black moves visually downward: straight (0,−1), captures (−1,0) and (+1,−1)
-function pawnMoves(
-    cells: Cell[],
-    pos: Position,
-    color: Color,
-    enPassantTarget: Position | null,
-): Position[] {
+function pawnMoves(cells: Cell[], pos: Position, color: Color, enPassantTarget: Position | null,): Position[] {
     const moves: Position[] = [];
     const { q, r } = pos;
     const dr = color === 'white' ? 1 : -1;
