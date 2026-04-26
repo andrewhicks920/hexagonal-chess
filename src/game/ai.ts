@@ -1,6 +1,6 @@
 import { type Cell, type Color, type Position, type PieceType, oppositeColor } from './types';
 import { getLegalMoves, getGameStatus, isPromotionSquare } from './gameLogic';
-import { applyMove, computeEnPassantTarget } from './board';
+import { applyMove, computeEnPassantTarget, FILES } from './board';
 
 /** Bot difficulty level, mapped to minimax search depth. */
 export type Difficulty = 'easy' | 'medium' | 'hard';
@@ -44,7 +44,7 @@ interface TTEntry {
  * @param color - The side the score is expressed from (positive = `color` is ahead).
  * @returns Net material advantage in pawn units.
  */
-function evaluate(cells: Cell[], color: Color): number {
+export function evaluate(cells: Cell[], color: Color): number {
     let score = 0;
     for (const cell of cells) {
         if (!cell.piece) continue;
@@ -222,6 +222,104 @@ function minimax(
 
 /** Minimax search depth for medium and hard. Easy returns a random move before this is consulted. */
 const DEPTH: Record<'medium' | 'hard', number> = { medium: 2, hard: 3 };
+
+/** One engine-suggested move with its evaluation score (from white's perspective). */
+export interface AnalysisMoveResult {
+    from: Position;
+    to: Position;
+    /** Score in pawn units from white's perspective after this move. */
+    score: number;
+    /** Human-readable SAN-style notation, e.g. "Nf3" or "exd5". */
+    notation: string;
+}
+
+/** Full analysis result for a position. */
+export interface AnalysisResult {
+    /** Position evaluation in pawn units from white's perspective. */
+    score: number;
+    /** Top N engine-suggested moves, best first. */
+    topMoves: AnalysisMoveResult[];
+}
+
+const PIECE_LETTER: Record<PieceType, string> = {
+    king: 'K', queen: 'Q', rook: 'R', bishop: 'B', knight: 'N', pawn: '',
+};
+
+function moveToNotation(cells: Cell[], move: Move, enPassantTarget: Position | null): string {
+    const piece = cells.find(c => c.q === move.from.q && c.r === move.from.r)?.piece;
+    if (!piece) return '?';
+
+    const toFile = FILES[move.to.q + 5] ?? '?';
+    const toRank = move.to.q + move.to.r + 6;
+    const isCapture = !!(
+        cells.find(c => c.q === move.to.q && c.r === move.to.r)?.piece ??
+        (enPassantTarget && move.to.q === enPassantTarget.q && move.to.r === enPassantTarget.r)
+    );
+    const capSym = isCapture ? 'x' : '';
+
+    if (piece.type === 'pawn') {
+        if (isCapture) return `${FILES[move.from.q + 5]}x${toFile}${toRank}`;
+        return `${toFile}${toRank}`;
+    }
+
+    const ambiguous = cells.some(c =>
+        c.piece?.type === piece.type &&
+        c.piece?.color === piece.color &&
+        !(c.q === move.from.q && c.r === move.from.r) &&
+        getLegalMoves(cells, { q: c.q, r: c.r }, enPassantTarget)
+            .some(m => m.q === move.to.q && m.r === move.to.r),
+    );
+    const disambig = ambiguous ? (FILES[move.from.q + 5] ?? '') : '';
+
+    return `${PIECE_LETTER[piece.type]}${disambig}${capSym}${toFile}${toRank}`;
+}
+
+/**
+ * Evaluates the current position at the given depth and returns the top N moves.
+ * Scores are always expressed from white's perspective (positive = white ahead).
+ *
+ * @param cells - Current board state.
+ * @param currentTurn - Side to move.
+ * @param enPassantTarget - En-passant target square, or `null`.
+ * @param topN - Number of top moves to return.
+ * @param depth - Minimax search depth.
+ */
+export function getAnalysisResult(
+    cells: Cell[],
+    currentTurn: Color,
+    enPassantTarget: Position | null,
+    topN = 5,
+    depth = 3,
+): AnalysisResult {
+    const status = getGameStatus(cells, currentTurn, enPassantTarget);
+    if (status === 'checkmate') {
+        const score = currentTurn === 'white' ? -10_000 : 10_000;
+        return { score, topMoves: [] };
+    }
+    if (status === 'stalemate') return { score: 0, topMoves: [] };
+
+    const maximizing = currentTurn === 'white';
+    const moves = getAllMoves(cells, currentTurn, enPassantTarget)
+        .sort((a, b) => scoreMove(cells, b) - scoreMove(cells, a));
+
+    const tt = new Map<string, TTEntry>();
+
+    const scored: AnalysisMoveResult[] = moves.map(move => {
+        const next = simulateMove(cells, move, enPassantTarget, currentTurn);
+        const score = minimax(
+            next, depth - 1, -Infinity, Infinity,
+            !maximizing, 'white', newEnPassant(cells, move), tt,
+        );
+        return { from: move.from, to: move.to, score, notation: moveToNotation(cells, move, enPassantTarget) };
+    });
+
+    scored.sort((a, b) => maximizing ? b.score - a.score : a.score - b.score);
+
+    return {
+        score: scored[0]?.score ?? evaluate(cells, 'white'),
+        topMoves: scored.slice(0, topN),
+    };
+}
 
 /**
  * Selects the best move for the bot using alpha-beta minimax.

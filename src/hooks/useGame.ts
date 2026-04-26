@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { type Cell, type Color, type Piece, type PieceType, type Position, type MoveRecord, oppositeColor } from '../game/types';
-import { generateBoard, samePos, applyMove, computeEnPassantTarget, FILES } from '../game/board';
+import { generateBoard, samePos, applyMove, computeEnPassantTarget, FILES, posKey, parseJan } from '../game/board';
 import { getLegalMoves, getGameStatus, isPromotionSquare } from '../game/gameLogic';
 
 const PIECE_LETTERS: Record<PieceType, string> = {
@@ -18,6 +18,18 @@ interface PendingPromotion {
     pos: Position;
     baseNotation: string;
     color: Color;
+}
+
+/** Full board snapshot pushed before each move so undo can restore it. */
+interface GameSnapshot {
+    cells: Cell[];
+    currentTurn: Color;
+    enPassantTarget: Position | null;
+    gameStatus: 'playing' | 'check' | 'checkmate' | 'stalemate';
+    capturedByWhite: Piece[];
+    capturedByBlack: Piece[];
+    moveHistory: MoveRecord[];
+    pendingPromotion: PendingPromotion | null;
 }
 
 function fileOf(pos: Position): string { return FILES[pos.q + 5] ?? '?'; }
@@ -119,6 +131,96 @@ function addToHistory(prev: MoveRecord[], color: Color, notation: string): MoveR
     return [...prev, { moveNumber: prev.length + 1, black: notation }];
 }
 
+// ---------------------------------------------------------------------------
+// SAN parser — converts a move token back into from/to positions
+// ---------------------------------------------------------------------------
+
+const PIECE_FROM_SAN: Partial<Record<string, PieceType>> = {
+    K: 'king', Q: 'queen', R: 'rook', B: 'bishop', N: 'knight',
+};
+
+const PROMO_FROM_LETTER: Partial<Record<string, PromoPieceType>> = {
+    Q: 'queen', R: 'rook', B: 'bishop', N: 'knight',
+};
+
+function parseSanToken(
+    token: string,
+    cells: Cell[],
+    turn: Color,
+    enPassantTarget: Position | null,
+): { from: Position; to: Position; promotion?: PromoPieceType } | null {
+    let tok = token.replace(/[+#]$/, '');
+
+    // Extract promotion suffix "=X"
+    let promotion: PromoPieceType | undefined;
+    const promoMatch = tok.match(/=([QRBN])$/);
+    if (promoMatch) {
+        promotion = PROMO_FROM_LETTER[promoMatch[1]];
+        tok = tok.slice(0, -2);
+    }
+
+    // Strip capture symbol
+    const isCapture = tok.includes('x');
+    tok = tok.replace('x', '');
+
+    // Determine piece type
+    const firstChar = tok[0];
+    const isPawn = !(firstChar in PIECE_FROM_SAN);
+    const pieceType: PieceType = isPawn ? 'pawn' : (PIECE_FROM_SAN[firstChar] as PieceType);
+    if (!isPawn) tok = tok.slice(1);
+
+    // Destination is the trailing file-letter + rank-digits
+    const destMatch = tok.match(/([a-l])(\d+)$/);
+    if (!destMatch) return null;
+
+    const toFile = destMatch[1];
+    const toRank = parseInt(destMatch[2]);
+    const disambig = tok.slice(0, tok.length - destMatch[0].length);
+
+    const toQ = FILES.indexOf(toFile) - 5;
+    if (toQ < -5) return null;
+    const toR = toRank - toQ - 6;
+    const to: Position = { q: toQ, r: toR };
+
+    // Find all pieces of this type+color that can legally reach `to`
+    let candidates = cells.filter(c =>
+        c.piece?.type === pieceType &&
+        c.piece?.color === turn &&
+        getLegalMoves(cells, { q: c.q, r: c.r }, enPassantTarget)
+            .some(m => m.q === to.q && m.r === to.r),
+    );
+
+    if (candidates.length === 0) return null;
+
+    // Narrow by disambiguation string (may contain file and/or rank)
+    if (disambig) {
+        const fileMatch = /^([a-l])/.exec(disambig);
+        const rankMatch = /(\d+)$/.exec(disambig);
+        if (fileMatch) {
+            const dq = FILES.indexOf(fileMatch[1]) - 5;
+            candidates = candidates.filter(c => c.q === dq);
+        }
+        if (rankMatch) {
+            const dRank = parseInt(rankMatch[1]);
+            candidates = candidates.filter(c => c.q + c.r + 6 === dRank);
+        }
+    }
+
+    // For pawn captures, disambiguate by source file when no explicit disambig
+    if (isPawn && isCapture && !disambig && candidates.length > 1) {
+        // Caller is expected to include source file before 'x', but handle gracefully
+        return null;
+    }
+
+    if (candidates.length !== 1) return null;
+
+    return { from: { q: candidates[0].q, r: candidates[0].r }, to, promotion };
+}
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
+
 export function useGame() {
     const [cells, setCells] = useState<Cell[]>(() => generateBoard());
     const [currentTurn, setCurrentTurn] = useState<Color>('white');
@@ -130,10 +232,27 @@ export function useGame() {
     const [capturedByBlack, setCapturedByBlack] = useState<Piece[]>([]);
     const [pendingPromotion, setPendingPromotion] = useState<PendingPromotion | null>(null);
     const [moveHistory, setMoveHistory] = useState<MoveRecord[]>([]);
+    const [canUndo, setCanUndo] = useState(false);
+
+    // Snapshot stack stored in a ref — changes here don't need to trigger re-renders.
+    const snapshotsRef = useRef<GameSnapshot[]>([]);
 
     const executeMove = useCallback((from: Position, to: Position) => {
         const movingPiece = cells.find(c => samePos(c, from))?.piece;
         if (!movingPiece) return;
+
+        // Push snapshot of current state so undo can restore it
+        snapshotsRef.current.push({
+            cells,
+            currentTurn,
+            enPassantTarget,
+            gameStatus,
+            capturedByWhite,
+            capturedByBlack,
+            moveHistory,
+            pendingPromotion,
+        });
+        setCanUndo(true);
 
         const newEnPassantTarget = computeEnPassantTarget(from, to, movingPiece);
         const captured = findCapture(cells, to, enPassantTarget, movingPiece.color);
@@ -163,7 +282,7 @@ export function useGame() {
             setCurrentTurn(nextTurn);
             setGameStatus(nextStatus);
         }
-    }, [cells, currentTurn, enPassantTarget]);
+    }, [cells, currentTurn, enPassantTarget, gameStatus, capturedByWhite, capturedByBlack, moveHistory, pendingPromotion]);
 
     const handleCellClick = useCallback((q: number, r: number) => {
         if (pendingPromotion) return;
@@ -198,6 +317,132 @@ export function useGame() {
         setCapturedByBlack([]);
         setPendingPromotion(null);
         setMoveHistory([]);
+        snapshotsRef.current = [];
+        setCanUndo(false);
+    }, []);
+
+    const undoMove = useCallback(() => {
+        const stack = snapshotsRef.current;
+        if (stack.length === 0) return;
+        const snap = stack[stack.length - 1];
+        snapshotsRef.current = stack.slice(0, -1);
+
+        setCells(snap.cells);
+        setCurrentTurn(snap.currentTurn);
+        setEnPassantTarget(snap.enPassantTarget);
+        setGameStatus(snap.gameStatus);
+        setCapturedByWhite(snap.capturedByWhite);
+        setCapturedByBlack(snap.capturedByBlack);
+        setMoveHistory(snap.moveHistory);
+        setPendingPromotion(snap.pendingPromotion);
+        setSelectedPos(null);
+        setValidMoves([]);
+        setCanUndo(snapshotsRef.current.length > 0);
+    }, []);
+
+    /** Load a custom position from a JAN string. */
+    const loadPosition = useCallback((jan: string) => {
+        try {
+            const pieces = parseJan(jan);
+            const newCells = generateBoard().map(cell => ({
+                ...cell,
+                piece: pieces.get(posKey(cell)) ?? null,
+            }));
+            setCells(newCells);
+            setCurrentTurn('white');
+            setSelectedPos(null);
+            setValidMoves([]);
+            setEnPassantTarget(null);
+            setGameStatus('playing');
+            setCapturedByWhite([]);
+            setCapturedByBlack([]);
+            setPendingPromotion(null);
+            setMoveHistory([]);
+            snapshotsRef.current = [];
+            setCanUndo(false);
+        } catch (err) {
+            console.warn('loadPosition: invalid JAN string', err);
+        }
+    }, []);
+
+    /**
+     * Replay a game from SAN-style move tokens (our own notation format).
+     * Accepts the same format this app exports: move numbers are optional and stripped.
+     * Example: "1. e4 e5 2. Nf3 Nc6"
+     */
+    const loadPgn = useCallback((pgn: string) => {
+        const tokens = pgn
+            .replace(/\d+\./g, '')
+            .replace(/1-0|0-1|1\/2-1\/2|\*/g, '')
+            .trim()
+            .split(/\s+/)
+            .filter(t => t.length > 0);
+
+        let cCells = generateBoard();
+        let cTurn: Color = 'white';
+        let cEp: Position | null = null;
+        let cCapW: Piece[] = [];
+        let cCapB: Piece[] = [];
+        let cHistory: MoveRecord[] = [];
+        let cStatus: 'playing' | 'check' | 'checkmate' | 'stalemate' = 'playing';
+        const newSnapshots: GameSnapshot[] = [];
+
+        for (const token of tokens) {
+            const parsed = parseSanToken(token, cCells, cTurn, cEp);
+            if (!parsed) break;
+
+            const { from, to, promotion } = parsed;
+            const movingPiece = cCells.find(c => c.q === from.q && c.r === from.r)?.piece;
+            if (!movingPiece) break;
+
+            newSnapshots.push({
+                cells: cCells, currentTurn: cTurn, enPassantTarget: cEp,
+                gameStatus: cStatus, capturedByWhite: cCapW, capturedByBlack: cCapB,
+                moveHistory: cHistory, pendingPromotion: null,
+            });
+
+            const captured = findCapture(cCells, to, cEp, movingPiece.color);
+            if (captured) {
+                if (movingPiece.color === 'white') cCapW = [...cCapW, captured];
+                else cCapB = [...cCapB, captured];
+            }
+
+            const newEp = computeEnPassantTarget(from, to, movingPiece);
+            let newCells = applyMove(cCells, from, to, cEp, movingPiece.color);
+
+            // Apply promotion (explicit or auto-queen if piece reached promo square)
+            if (movingPiece.type === 'pawn' && isPromotionSquare(to.q, to.r, movingPiece.color)) {
+                const promoType: PromoPieceType = promotion ?? 'queen';
+                newCells = newCells.map(c =>
+                    c.q === to.q && c.r === to.r
+                        ? { ...c, piece: { type: promoType, color: movingPiece.color } }
+                        : c,
+                );
+            }
+
+            const nextTurn = oppositeColor(cTurn);
+            const nextStatus = getGameStatus(newCells, nextTurn, newEp);
+            cHistory = addToHistory(cHistory, movingPiece.color, token);
+            cCells = newCells;
+            cEp = newEp;
+            cTurn = nextTurn;
+            cStatus = nextStatus;
+
+            if (cStatus === 'checkmate' || cStatus === 'stalemate') break;
+        }
+
+        setCells(cCells);
+        setCurrentTurn(cTurn);
+        setEnPassantTarget(cEp);
+        setGameStatus(cStatus);
+        setCapturedByWhite(cCapW);
+        setCapturedByBlack(cCapB);
+        setMoveHistory(cHistory);
+        setPendingPromotion(null);
+        setSelectedPos(null);
+        setValidMoves([]);
+        snapshotsRef.current = newSnapshots;
+        setCanUndo(newSnapshots.length > 0);
     }, []);
 
     const confirmPromotion = useCallback((pieceType: PromoPieceType) => {
@@ -235,5 +480,9 @@ export function useGame() {
         resetGame,
         moveHistory,
         enPassantTarget,
+        undoMove,
+        canUndo,
+        loadPosition,
+        loadPgn,
     };
 }

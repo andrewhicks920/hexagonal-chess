@@ -5,8 +5,11 @@ import { MoveHistory } from '../components/MoveHistory/MoveHistory.tsx';
 import { CapturedPieces } from '../components/CapturedPieces/CapturedPieces.tsx';
 import { TopBar } from '../components/TopBar/TopBar.tsx';
 import { BotSetup } from '../components/BotSetup/BotSetup.tsx';
+import { EvalBar } from '../components/EvalBar/EvalBar.tsx';
+import { AnalysisPanel } from '../components/AnalysisPanel/AnalysisPanel.tsx';
 import { useGame } from '../hooks/useGame.ts';
 import { useBot } from '../hooks/useBot.ts';
+import { useAnalysis } from '../hooks/useAnalysis.ts';
 import type { Difficulty } from '../game/ai.ts';
 import { themes, type ThemeName } from '../uiConfig.ts';
 import type { Color } from '../game/types.ts';
@@ -40,6 +43,10 @@ export function GamePage({ mode, themeName, pieceSet, onThemeChange, onPieceSetC
         resetGame,
         moveHistory,
         enPassantTarget,
+        undoMove,
+        canUndo,
+        loadPosition,
+        loadPgn,
     } = useGame();
 
     const themeVars = themes[themeName] as Record<string, string>;
@@ -55,6 +62,13 @@ export function GamePage({ mode, themeName, pieceSet, onThemeChange, onPieceSetC
         executeBotMove,
         confirmPromotion,
     });
+
+    const { result: analysisResult, loading: analysisLoading } = useAnalysis(
+        mode === 'analysis',
+        cells,
+        currentTurn,
+        enPassantTarget,
+    );
 
     // Prevent player from clicking during the bot's turn.
     const wrappedHandleCellClick = useCallback((q: number, r: number) => {
@@ -88,8 +102,6 @@ export function GamePage({ mode, themeName, pieceSet, onThemeChange, onPieceSetC
         statusVariant = 'thinking';
     }
 
-    const modeLabel = mode === 'analysis' ? 'Analysis' : mode === 'bot' ? 'vs Computer' : mode === 'online' ? 'Online' : 'Local';
-
     // In bot mode, top panel = opponent (bot), bottom panel = player
     const topColor: Color = mode === 'bot' ? botColor : 'black';
     const bottomColor: Color = mode === 'bot' ? playerColor : 'white';
@@ -100,59 +112,83 @@ export function GamePage({ mode, themeName, pieceSet, onThemeChange, onPieceSetC
         <div className="app-shell" style={themeVars}>
             <TopBar onSettingsOpen={() => setSettingsOpen(true)} />
             <div className="game-content">
-            <main className="board-area">
-                <div className={`player-panel${currentTurn === topColor && !isGameOver ? ' player-panel--active' : ''}`}>
-                    <PlayerAvatar color={topColor} className="player-avatar" />
-                    <div className="player-info">
-                        <span className="player-name">{topLabel}</span>
-                        <CapturedPieces pieces={topColor === 'black' ? capturedByBlack : capturedByWhite} pieceSet={pieceSet} />
-                    </div>
-                    {currentTurn === topColor && !isGameOver && <div className="turn-dot" />}
-                </div>
-
-                <Board
-                    cells={cells}
-                    currentTurn={currentTurn}
-                    selectedPos={selectedPos}
-                    validMoves={validMoves}
-                    handleCellClick={wrappedHandleCellClick}
-                    gameStatus={gameStatus}
-                    promotionPending={promotionPending}
-                    confirmPromotion={confirmPromotion}
-                    pieceSet={pieceSet}
-                    flipped={flipped}
-                />
-
-                <div className={`player-panel${currentTurn === bottomColor && !isGameOver ? ' player-panel--active' : ''}`}>
-                    <PlayerAvatar color={bottomColor} className="player-avatar" />
-                    <div className="player-info">
-                        <span className="player-name">{bottomLabel}</span>
-                        <CapturedPieces pieces={bottomColor === 'white' ? capturedByWhite : capturedByBlack} pieceSet={pieceSet} />
-                    </div>
-                    {currentTurn === bottomColor && !isGameOver && <div className="turn-dot" />}
-                </div>
-            </main>
-
-            <aside className="right-panel">
-                <div className="right-panel-tabs">
-                    <span className="panel-tab panel-tab--active">{modeLabel}</span>
-                    <span className="panel-tab" style={{ marginLeft: 'auto'}}>Moves</span>
-                </div>
-                <MoveHistory moves={moveHistory} />
-                <div className="panel-controls">
-                    {statusMessage && (
-                        <div className={`status-message status-message--${statusVariant}`}>
-                            {statusMessage}
+                <main className="board-area">
+                    <div className={`player-panel${currentTurn === topColor && !isGameOver ? ' player-panel--active' : ''}`}>
+                        <PlayerAvatar color={topColor} className="player-avatar" />
+                        <div className="player-info">
+                            <span className="player-name">{topLabel}</span>
+                            <CapturedPieces pieces={topColor === 'black' ? capturedByBlack : capturedByWhite} pieceSet={pieceSet} />
                         </div>
+                        {currentTurn === topColor && !isGameOver && <div className="turn-dot" />}
+                    </div>
+
+                    <Board
+                        cells={cells}
+                        currentTurn={currentTurn}
+                        selectedPos={selectedPos}
+                        validMoves={validMoves}
+                        handleCellClick={wrappedHandleCellClick}
+                        gameStatus={gameStatus}
+                        promotionPending={promotionPending}
+                        confirmPromotion={confirmPromotion}
+                        pieceSet={pieceSet}
+                        flipped={flipped}
+                    />
+
+                    <div className={`player-panel${currentTurn === bottomColor && !isGameOver ? ' player-panel--active' : ''}`}>
+                        <PlayerAvatar color={bottomColor} className="player-avatar" />
+                        <div className="player-info">
+                            <span className="player-name">{bottomLabel}</span>
+                            <CapturedPieces pieces={bottomColor === 'white' ? capturedByWhite : capturedByBlack} pieceSet={pieceSet} />
+                        </div>
+                        {currentTurn === bottomColor && !isGameOver && <div className="turn-dot" />}
+                    </div>
+                </main>
+
+                {mode === 'analysis' && (
+                    <EvalBar
+                        score={analysisResult?.score ?? 0}
+                        loading={analysisLoading}
+                    />
+                )}
+
+                <aside className="right-panel">
+                    {mode === 'analysis' ? (
+                        <AnalysisPanel
+                            topMoves={analysisResult?.topMoves ?? []}
+                            loading={analysisLoading}
+                            moveHistory={moveHistory}
+                            canUndo={canUndo}
+                            onUndo={undoMove}
+                            onLoadJan={loadPosition}
+                            onLoadPgn={loadPgn}
+                            onNewGame={resetGame}
+                        />
+                    ) : (
+                        <>
+                            <div className="right-panel-tabs">
+                                <span className="panel-tab panel-tab--active">
+                                    {mode === 'bot' ? 'vs Computer' : mode === 'online' ? 'Online' : 'Local'}
+                                </span>
+                                <span className="panel-tab" style={{ marginLeft: 'auto' }}>Moves</span>
+                            </div>
+                            <MoveHistory moves={moveHistory} />
+                            <div className="panel-controls">
+                                {statusMessage && (
+                                    <div className={`status-message status-message--${statusVariant}`}>
+                                        {statusMessage}
+                                    </div>
+                                )}
+                                <button className="new-game-btn" onClick={() => {
+                                    resetGame();
+                                    if (mode === 'bot') resetBot();
+                                }}>
+                                    + New Game
+                                </button>
+                            </div>
+                        </>
                     )}
-                    <button className="new-game-btn" onClick={() => {
-                        resetGame();
-                        if (mode === 'bot') resetBot();
-                    }}>
-                        + New Game
-                    </button>
-                </div>
-            </aside>
+                </aside>
             </div>
 
             {mode === 'bot' && !botReady && (
