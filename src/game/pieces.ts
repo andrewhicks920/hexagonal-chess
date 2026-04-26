@@ -1,5 +1,5 @@
-import { type Cell, type Color, type Position } from './types';
-import { isValidCell, buildCellMap } from './board';
+import {type Cell, type Color, type Position} from './types';
+import {buildCellMap, isValidCell} from './board';
 
 // Rook — slides along 3 axes (6 directions)
 export const ROOK_DIRS: [number, number][] = [
@@ -161,5 +161,7 @@ export function getPseudoLegalMoves(cells: Cell[], pos: Position, enPassantTarge
         case 'king':   return kingMoves(cellMap, pos, color);
         case 'knight': return knightMoves(cellMap, pos, color);
         case 'pawn':   return pawnMoves(cellMap, pos, color, enPassantTarget);
+
+        default: throw new Error(`Unhandled piece type: ${type}`);
     }
 }

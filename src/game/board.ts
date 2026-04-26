@@ -7,13 +7,11 @@ export const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'k', 'l'];
  * The target is the square the capturing pawn lands on (the skipped square),
  * not the square of the captured pawn.
  */
-export function computeEnPassantTarget(
-    from: Position,
-    to: Position,
-    piece: Piece | null | undefined,
-): Position | null {
+export function computeEnPassantTarget(from: Position, to: Position, piece: Piece | null | undefined,): Position | null {
     if (piece?.type !== 'pawn') return null;
+
     if (Math.abs(to.r - from.r) !== 2) return null;
+
     return { q: to.q, r: (from.r + to.r) / 2 };
 }
 
@@ -26,7 +24,9 @@ export function applyMove(cells: Cell[], from: Position, to: Position, enPassant
         cell.q === enPassantTarget.q &&
         cell.r === epCapturedR;
 
-    const piece = cells.find(c => samePos(c, from))!.piece;
+    const fromCell = cells.find(c => samePos(c, from));
+    if (!fromCell) throw new Error(`applyMove: no cell at (${from.q},${from.r})`);
+    const piece = fromCell.piece;
 
     return cells.map(cell => {
         if (samePos(cell, from)) return { ...cell, piece: null };
@@ -137,17 +137,6 @@ export function buildCellMap(cells: Cell[]): Map<string, Cell> {
 
 export function samePos(a: Position, b: Position): boolean {
     return a.q === b.q && a.r === b.r;
-}
-
-// Converts a file letter + rank number to (q, r) coordinates.
-// file: 'a'–'l' (no 'j').  rank: 1–11.
-export function fileRankToPos(file: string, rank: number): Position {
-    const fileIndex = FILES.indexOf(file);
-    if (import.meta.env.DEV && fileIndex === -1)
-        console.warn(`fileRankToPos: '${file}' is not a valid hex-chess file`);
-    const q = fileIndex - 5;
-    const r = rank - Math.min(q, 0) - 6;
-    return { q, r };
 }
 
 

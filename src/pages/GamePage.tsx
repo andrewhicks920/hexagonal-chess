@@ -102,9 +102,7 @@ export function GamePage({ mode, themeName, pieceSet, onThemeChange, onPieceSetC
             clearTimeout(timer);
             worker.removeEventListener('message', handler);
         };
-    // cells/enPassantTarget/difficulty intentionally omitted — currentTurn change is the trigger
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mode, botReady, currentTurn, botColor, isGameOver, promotionPending]);
+    }, [mode, botReady, currentTurn, botColor, isGameOver, promotionPending, cells, enPassantTarget, difficulty, executeBotMove]);
 
     // Auto-promote to queen for the bot
     useEffect(() => {
