@@ -2,17 +2,27 @@ import { type Cell, type Color, type Position, oppositeColor } from './types';
 import { samePos, applyMove, buildCellMap, isValidCell } from './board';
 import { getPseudoLegalMoves, ROOK_DIRS, BISHOP_DIRS, KNIGHT_MOVES, KING_DIRS } from './pieces';
 
-/** Returns the position of `color`'s king, or `null` if the king is not on the board. */
+/**
+ * Returns the position of `color`'s king, or `null` if the king is not on the board.
+ *
+ * @param cells - Current board state.
+ * @param color - Side whose king to locate.
+ * @returns The king's `Position`, or `null` if absent (should not occur in a valid game).
+ */
 function findKing(cells: Cell[], color: Color): Position | null {
     const cell = cells.find(c => c.piece?.type === 'king' && c.piece.color === color);
     return cell ? { q: cell.q, r: cell.r } : null;
 }
 
 /**
- * True if `color`'s king is attacked by any opponent piece.
+ * Returns `true` if `color`'s king is attacked by any opponent piece.
  *
  * Uses a reverse-lookup (ray-cast outward from the king) instead of generating
  * every opponent move, reducing work from O(pieces × board) to O(board_rays).
+ *
+ * @param cells - Current board state.
+ * @param color - The side whose king is being tested for check.
+ * @returns `true` if the king is under attack; `false` otherwise (including if no king exists).
  */
 export function isInCheck(cells: Cell[], color: Color): boolean {
     const kingPos = findKing(cells, color);
@@ -80,9 +90,12 @@ export function isInCheck(cells: Cell[], color: Color): boolean {
 
 /**
  * Returns all fully legal moves for the piece at `pos`.
- * Filters pseudo-legal moves by simulating each one and rejecting any that leave `color`'s king in check.
+ * Filters pseudo-legal moves by simulating each one and rejecting any that leave the king in check.
  *
+ * @param cells - Current board state.
+ * @param pos - Position of the piece to move.
  * @param enPassantTarget - Landing square for a possible en-passant capture, or `null`.
+ * @returns All destinations the piece can legally move to this turn.
  */
 export function getLegalMoves(cells: Cell[], pos: Position, enPassantTarget: Position | null,): Position[] {
     const cell = cells.find(c => samePos(c, pos));
@@ -97,7 +110,12 @@ export function getLegalMoves(cells: Cell[], pos: Position, enPassantTarget: Pos
 
 /**
  * Returns `true` if `color` has at least one legal move available.
- * Used to distinguish checkmate from stalemate.
+ * Used to distinguish checkmate (in check, no moves) from stalemate (not in check, no moves).
+ *
+ * @param cells - Current board state.
+ * @param color - The side to test for available moves.
+ * @param enPassantTarget - En-passant landing square available this turn, or `null`.
+ * @returns `true` if at least one legal move exists for `color`.
  */
 export function hasAnyLegalMove(cells: Cell[], color: Color, enPassantTarget: Position | null,): boolean {
     for (const cell of cells) {
@@ -115,6 +133,11 @@ export function hasAnyLegalMove(cells: Cell[], color: Color, enPassantTarget: Po
  * - `'check'`     — king is attacked but the player has legal replies.
  * - `'checkmate'` — king is attacked with no legal moves.
  * - `'stalemate'` — king is not attacked but no legal moves exist.
+ *
+ * @param cells - Current board state.
+ * @param currentTurn - The side about to move.
+ * @param enPassantTarget - En-passant landing square available this turn, or `null`.
+ * @returns One of `'playing'`, `'check'`, `'checkmate'`, or `'stalemate'`.
  */
 export function getGameStatus(cells: Cell[],
     currentTurn: Color,
@@ -129,8 +152,13 @@ export function getGameStatus(cells: Cell[],
 }
 
 /**
- * True when a pawn has reached the furthest reachable rank for its file.
- * White promotes at r = min(5, 5−q); Black at r = max(−5, −5−q).
+ * Returns `true` when a pawn has reached the furthest reachable rank for its file.
+ * White promotes at `r = min(5, 5 − q)`; Black at `r = max(−5, −5 − q)`.
+ *
+ * @param q - Column coordinate of the pawn's destination.
+ * @param r - Row coordinate of the pawn's destination.
+ * @param color - Color of the pawn.
+ * @returns `true` if the square is a promotion square for `color`.
  */
 export function isPromotionSquare(q: number, r: number, color: Color): boolean {
     if (color === 'white') return r === Math.min(5, 5 - q);

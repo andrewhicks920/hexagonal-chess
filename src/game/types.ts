@@ -60,7 +60,12 @@ export interface MoveRecord {
   black?: string;
 }
 
-/** Returns the opponent of `color`. */
+/**
+ * Returns the opponent of `color`.
+ *
+ * @param color - The side whose opponent is needed.
+ * @returns `'black'` when given `'white'`, and vice versa.
+ */
 export function oppositeColor(color: Color): Color {
     return color === 'white' ? 'black' : 'white';
 }

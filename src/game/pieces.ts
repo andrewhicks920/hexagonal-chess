@@ -31,7 +31,14 @@ export const KNIGHT_MOVES: [number, number][] = [
 /** All 12 adjacent directions for a king — union of rook and bishop directions. */
 export const KING_DIRS: [number, number][] = [...ROOK_DIRS, ...BISHOP_DIRS];
 
-/** Retrieves a cell from a pre-built map by its axial coordinates. */
+/**
+ * Retrieves a cell from a pre-built map by its axial coordinates.
+ *
+ * @param cellMap - Map produced by {@link buildCellMap}.
+ * @param q - Column coordinate.
+ * @param r - Row coordinate.
+ * @returns The matching `Cell`, or `undefined` if the position is off-board or absent.
+ */
 function cellAt(cellMap: Map<string, Cell>, q: number, r: number): Cell | undefined {
     return cellMap.get(`${q},${r}`);
 }
@@ -39,6 +46,13 @@ function cellAt(cellMap: Map<string, Cell>, q: number, r: number): Cell | undefi
 /**
  * Walks one ray in direction `(deltaQ, deltaR)` from `from`, collecting squares until
  * the board edge, a friendly piece (exclusive), or an enemy piece (inclusive capture).
+ *
+ * @param cellMap - Pre-built O(1) lookup map for the current board state.
+ * @param from - Starting position of the sliding piece.
+ * @param deltaQ - Column step per iteration (e.g. `+1`, `0`, or `-1`).
+ * @param deltaR - Row step per iteration.
+ * @param color - Color of the sliding piece; used to exclude friendly-piece squares.
+ * @returns All reachable positions along this ray.
  */
 function slide(cellMap: Map<string, Cell>, from: Position, deltaQ: number, deltaR: number, color: Color): Position[] {
     const moves: Position[] = [];
@@ -112,7 +126,11 @@ function knightMoves(cellMap: Map<string, Cell>, pos: Position, color: Color): P
  * Black moves downward: pushes along `(0,−1)`, captures along `(−1,0)` and `(+1,−1)`.
  * A double-push is allowed only from the pawn's starting rank.
  *
+ * @param cellMap - Pre-built O(1) lookup map for the current board state.
+ * @param pos - Current position of the pawn.
+ * @param color - Color of the pawn.
  * @param enPassantTarget - The square a capturing pawn would land on, or `null`.
+ * @returns All reachable squares, including en-passant capture squares.
  */
 function pawnMoves(cellMap: Map<string, Cell>, pos: Position, color: Color, enPassantTarget: Position | null): Position[] {
     const moves: Position[] = [];
@@ -157,6 +175,11 @@ function pawnMoves(cellMap: Map<string, Cell>, pos: Position, color: Color, enPa
  *
  * White starting r: `−(max(q, 0) + 1)` — verified against all 9 pawn starting positions.
  * Black starting r: `max(1 − q, 1)`    — verified against all 9 pawn starting positions.
+ *
+ * @param q - Column coordinate of the pawn.
+ * @param r - Row coordinate of the pawn.
+ * @param color - Color of the pawn.
+ * @returns `true` if the pawn has not yet moved from its initial rank.
  */
 function isOnStartingRank(q: number, r: number, color: Color): boolean {
     if (color === 'white') return r === -(Math.max(q, 0) + 1);
@@ -166,7 +189,12 @@ function isOnStartingRank(q: number, r: number, color: Color): boolean {
 
 /**
  * Returns all pseudo-legal moves for the piece at `pos`.
- * Does NOT filter moves that leave the king in check — that comes next.
+ * Does NOT filter moves that leave the king in check — call {@link getLegalMoves} for that.
+ *
+ * @param cells - Current board state.
+ * @param pos - Position of the piece to move.
+ * @param enPassantTarget - En-passant landing square available this turn, or `null`.
+ * @returns All destinations reachable by piece movement rules, regardless of check.
  */
 export function getPseudoLegalMoves(cells: Cell[], pos: Position, enPassantTarget: Position | null = null): Position[] {
     // Build once so every cellAt lookup below is O(1) instead of O(n).

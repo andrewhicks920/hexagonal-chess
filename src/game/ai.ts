@@ -27,6 +27,10 @@ interface Move {
 /**
  * Static material evaluation relative to `color`.
  * Returns the sum of `color`'s piece values minus the opponent's.
+ *
+ * @param cells - Board state to evaluate.
+ * @param color - The side the score is expressed from (positive = `color` is ahead).
+ * @returns Net material advantage in pawn units.
  */
 function evaluate(cells: Cell[], color: Color): number {
     let score = 0;
@@ -38,13 +42,30 @@ function evaluate(cells: Cell[], color: Color): number {
     return score;
 }
 
-/** Thin wrapper so minimax call sites stay readable. */
+/**
+ * Computes the en-passant target that results from `move`, or `null`.
+ * Thin wrapper around {@link computeEnPassantTarget} so minimax call sites stay readable.
+ *
+ * @param cells - Board state before the move is applied.
+ * @param move - The half-move being played.
+ * @returns The en-passant target square for the next ply, or `null`.
+ */
 function newEnPassant(cells: Cell[], move: Move): Position | null {
     const piece = cells.find(c => c.q === move.from.q && c.r === move.from.r)?.piece;
     return computeEnPassantTarget(move.from, move.to, piece);
 }
 
-/** applyMove + auto-promote to queen so minimax evaluates the correct piece. */
+/**
+ * Applies `move` to `cells` and auto-promotes any pawn to queen.
+ * Auto-promotion to queen is used so minimax always evaluates the strongest resulting piece;
+ * the actual promotion choice is handled separately in the UI layer.
+ *
+ * @param cells - Board state before the move.
+ * @param move - The half-move to apply.
+ * @param enPassantTarget - En-passant target available this ply, or `null`.
+ * @param color - Side making the move.
+ * @returns A new `Cell[]` with the move applied and any promotion resolved to queen.
+ */
 function simulateMove(cells: Cell[], move: Move, enPassantTarget: Position | null, color: Color): Cell[] {
     const next = applyMove(cells, move.from, move.to, enPassantTarget, color);
     const piece = cells.find(c => c.q === move.from.q && c.r === move.from.r)?.piece;
@@ -60,7 +81,7 @@ function simulateMove(cells: Cell[], move: Move, enPassantTarget: Position | nul
 }
 
 /**
- * MVV-LVA score for move ordering: captures are searched first, prioritising
+ * MVV-LVA score for move ordering: captures are searched first, prioritizing
  * high-value victims captured by low-value attackers, so alpha-beta cuts off more branches.
  */
 function scoreMove(cells: Cell[], move: Move): number {
@@ -70,7 +91,14 @@ function scoreMove(cells: Cell[], move: Move): number {
     return PIECE_VALUES[victim.type] - (attacker ? PIECE_VALUES[attacker.type] * 0.1 : 0);
 }
 
-/** Returns every legal move available to `color` in the given position. */
+/**
+ * Returns every legal move available to `color` in the given position.
+ *
+ * @param cells - Current board state.
+ * @param color - The side whose moves to enumerate.
+ * @param enPassantTarget - En-passant landing square available this turn, or `null`.
+ * @returns All legal `Move` objects for `color`, in an unspecified order before sorting.
+ */
 function getAllMoves(cells: Cell[], color: Color, enPassantTarget: Position | null): Move[] {
     const moves: Move[] = [];
     for (const cell of cells) {
@@ -145,7 +173,11 @@ const DEPTH: Record<Difficulty, number> = { easy: 1, medium: 2, hard: 3 };
  * Selects the best move for the bot using alpha-beta minimax.
  * On `'easy'` difficulty a random legal move is returned instead of a search.
  *
- * @returns The chosen `Move`, or `null` if the bot has no legal moves.
+ * @param cells - Current board state.
+ * @param botColor - The side the bot is playing.
+ * @param enPassantTarget - En-passant landing square available this turn, or `null`.
+ * @param difficulty - Search depth: `'easy'` picks randomly, `'medium'` searches 2 plies, `'hard'` 3 plies.
+ * @returns The chosen `Move`, or `null` if the bot has no legal moves (checkmate or stalemate).
  */
 export function getBotMove(cells: Cell[], botColor: Color, enPassantTarget: Position | null, difficulty: Difficulty,): Move | null {
     const moves = getAllMoves(cells, botColor, enPassantTarget);
