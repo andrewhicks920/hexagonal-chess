@@ -5,6 +5,7 @@ import type { Difficulty } from '../game/ai';
 import type { PromoPieceType } from './useGame';
 
 const THINK_TIMEOUT_MS = 8_000;
+const MAX_RETRIES = 3;
 
 function spawnWorker(ref: MutableRefObject<Worker | null>): Worker {
     ref.current?.terminate();
@@ -53,12 +54,18 @@ export function useBot({
     const botColor: Color = playerColor === 'white' ? 'black' : 'white';
     const flipped = mode === 'bot' && playerColor === 'black';
 
-    const workerRef = useRef<Worker | null>(null);
+    const workerRef    = useRef<Worker | null>(null);
+    const retryCount   = useRef(0);
 
     useEffect(() => {
         spawnWorker(workerRef);
         return () => { workerRef.current?.terminate(); workerRef.current = null; };
     }, []);
+
+    // Reset the retry counter whenever it becomes the bot's turn (fresh position).
+    useEffect(() => {
+        if (currentTurn === botColor) retryCount.current = 0;
+    }, [currentTurn, botColor]);
 
     useEffect(() => {
         if (mode !== 'bot' || !botReady) return;
@@ -86,13 +93,20 @@ export function useBot({
             worker.postMessage({ cells, botColor, enPassantTarget, difficulty });
         }, 350);
 
-        // If the worker takes too long, terminate it, spin up a fresh one, and retry.
+        // If the worker takes too long, terminate it, spin up a fresh one, and retry
+        // up to MAX_RETRIES times. Without a cap, a position that consistently times
+        // out would increment retrySignal forever, re-firing this effect each time.
         const timeoutTimer = setTimeout(() => {
             if (cancelled) return;
+            if (retryCount.current >= MAX_RETRIES) {
+                setIsThinking(false);
+                return;
+            }
             cancelled = true;
             setIsThinking(false);
             worker.removeEventListener('message', handler);
             spawnWorker(workerRef);
+            retryCount.current += 1;
             setRetrySignal(s => s + 1);
         }, 350 + THINK_TIMEOUT_MS);
 

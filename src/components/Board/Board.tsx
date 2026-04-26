@@ -108,12 +108,16 @@ export function Board({
     pieceSet,
     flipped = false,
 }: BoardProps) {
-    const validMoveSet = new Set(validMoves.map(p => `${p.q},${p.r}`));
+    const validMoveSet = useMemo(
+        () => new Set(validMoves.map(p => `${p.q},${p.r}`)),
+        [validMoves],
+    );
 
-    const kingInCheckKey = (gameStatus === 'check' || gameStatus === 'checkmate')
-        ? cells.find(c => c.piece?.type === 'king' && c.piece.color === currentTurn)
-        : null;
-    const checkKey = kingInCheckKey ? `${kingInCheckKey.q},${kingInCheckKey.r}` : null;
+    const checkKey = useMemo(() => {
+        if (gameStatus !== 'check' && gameStatus !== 'checkmate') return null;
+        const king = cells.find(c => c.piece?.type === 'king' && c.piece.color === currentTurn);
+        return king ? `${king.q},${king.r}` : null;
+    }, [cells, currentTurn, gameStatus]);
 
     const isGameOver = gameStatus === 'checkmate' || gameStatus === 'stalemate';
 
@@ -153,14 +157,14 @@ export function Board({
                                 isClickable={isClickable}
                                 pieceSet={pieceSet}
                                 flipped={flipped}
-                                onClick={() => handleCellClick(cell.q, cell.r)}
+                                handleCellClick={handleCellClick}
                             />
                         );
                     })}
 
                     <path
                         d={GRID_PATH}
-                        stroke="#111"
+                        stroke="var(--grid-stroke)"
                         strokeWidth={2}
                         fill="none"
                         style={{ pointerEvents: 'none' }}

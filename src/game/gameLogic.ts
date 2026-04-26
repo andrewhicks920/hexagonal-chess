@@ -1,5 +1,5 @@
 import { type Cell, type Color, type Position, oppositeColor } from './types';
-import { samePos, applyMove, buildCellMap, isValidCell } from './board';
+import { applyMove, buildCellMap, isValidCell, posKey } from './board';
 import { getPseudoLegalMoves, ROOK_DIRS, BISHOP_DIRS, KNIGHT_MOVES, KING_DIRS } from './pieces';
 
 /**
@@ -98,7 +98,7 @@ export function isInCheck(cells: Cell[], color: Color): boolean {
  * @returns All destinations the piece can legally move to this turn.
  */
 export function getLegalMoves(cells: Cell[], pos: Position, enPassantTarget: Position | null,): Position[] {
-    const cell = cells.find(c => samePos(c, pos));
+    const cell = buildCellMap(cells).get(posKey(pos));
     if (!cell?.piece) return [];
 
     const { color } = cell.piece;

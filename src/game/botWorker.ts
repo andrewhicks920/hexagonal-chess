@@ -19,3 +19,10 @@ self.onmessage = (e: MessageEvent<BotRequest>) => {
     const move = getBotMove(cells, botColor, enPassantTarget, difficulty);
     self.postMessage(move);
 };
+
+// Post null on any unhandled error so the main thread receives a message event
+// and can degrade gracefully instead of waiting for the 8-second timeout.
+self.onerror = () => {
+    self.postMessage(null);
+    return true;
+};

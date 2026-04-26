@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { Cell } from '../../game/types.ts';
 import { hexPoints } from '../../game/board.ts';
 import { PieceSymbol } from './Piece.tsx';
@@ -13,19 +14,19 @@ interface HexTileFillProps {
     isHighlight: boolean;
     isCheck: boolean;
     isClickable: boolean;
-    onClick: () => void;
+    handleCellClick: (q: number, r: number) => void;
     pieceSet: string;
     flipped?: boolean;
 }
 
 
-export function HexTileFill({ cell, x, y, size, isSelected, isHighlight, isCheck, isClickable, onClick, pieceSet, flipped }: HexTileFillProps) {
+export const HexTileFill = memo(function HexTileFill({ cell, x, y, size, isSelected, isHighlight, isCheck, isClickable, handleCellClick, pieceSet, flipped }: HexTileFillProps) {
     const points = hexPoints(x, y, size);
 
     return (
         <g
             className={`hex-tile ${isClickable ? 'clickable' : 'no-pointer-events'}`}
-            onClick={onClick}
+            onClick={() => handleCellClick(cell.q, cell.r)}
         >
             <polygon
                 points={points}
@@ -60,4 +61,4 @@ export function HexTileFill({ cell, x, y, size, isSelected, isHighlight, isCheck
             )}
         </g>
     );
-}
+});

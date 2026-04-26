@@ -100,7 +100,7 @@
     background: none;
     border: none;
     border-bottom: 2px solid transparent;
-    color: #9a9998;
+    color: #e8e3de;
     font-size: 0.82rem;
     font-weight: 600;
     padding: 11px 14px;
@@ -110,7 +110,6 @@
 }
 
 .panel-tab--active {
-    color: #e8e3de;
     border-bottom-color: #81b64c;
 }
 

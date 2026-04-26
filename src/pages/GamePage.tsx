@@ -136,7 +136,7 @@ export function GamePage({ mode, themeName, pieceSet, onThemeChange, onPieceSetC
             <aside className="right-panel">
                 <div className="right-panel-tabs">
                     <span className="panel-tab panel-tab--active">{modeLabel}</span>
-                    <span className="panel-tab panel-tab--active" style={{ marginLeft: 'auto', borderBottomColor: 'transparent', color: '#9a9998' }}>Moves</span>
+                    <span className="panel-tab" style={{ marginLeft: 'auto'}}>Moves</span>
                 </div>
                 <MoveHistory moves={moveHistory} />
                 <div className="panel-controls">

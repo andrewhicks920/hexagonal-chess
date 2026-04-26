@@ -25,6 +25,18 @@ interface Move {
 }
 
 /**
+ * Transposition table entry.
+ * `flag` distinguishes exact minimax values from alpha/beta bounds:
+ *   - `'exact'`  — the stored score is the true minimax value.
+ *   - `'lower'`  — a beta cutoff occurred; true value ≥ score.
+ *   - `'upper'`  — a fail-low occurred; true value ≤ score.
+ */
+interface TTEntry {
+    score: number;
+    flag: 'exact' | 'lower' | 'upper';
+}
+
+/**
  * Static material evaluation relative to `color`.
  * Returns the sum of `color`'s piece values minus the opponent's.
  *
@@ -81,6 +93,19 @@ function simulateMove(cells: Cell[], move: Move, enPassantTarget: Position | nul
 }
 
 /**
+ * Builds a compact string key for the current board position + en-passant state.
+ * Cells are always generated in the same order (from `generateBoard`), so no sort is needed.
+ */
+function positionKey(cells: Cell[], enPassantTarget: Position | null): string {
+    let key = '';
+    for (const cell of cells) {
+        if (cell.piece) key += `${cell.q},${cell.r}${cell.piece.color[0]}${cell.piece.type[0]};`;
+    }
+    if (enPassantTarget) key += `e${enPassantTarget.q},${enPassantTarget.r}`;
+    return key;
+}
+
+/**
  * MVV-LVA score for move ordering: captures are searched first, prioritizing
  * high-value victims captured by low-value attackers, so alpha-beta cuts off more branches.
  */
@@ -112,7 +137,7 @@ function getAllMoves(cells: Cell[], color: Color, enPassantTarget: Position | nu
 }
 
 /**
- * Alpha-beta minimax search.
+ * Alpha-beta minimax search with a transposition table.
  *
  * @param cells - Board state at this node of the search tree.
  * @param depth - Remaining plies to search; returns the static evaluation at 0.
@@ -121,6 +146,7 @@ function getAllMoves(cells: Cell[], color: Color, enPassantTarget: Position | nu
  * @param maximizing - `true` when it is the bot's turn to move.
  * @param botColor - The side the bot is playing; scores are always relative to this color.
  * @param enPassantTarget - En-passant target square available to the side to move at this node, or `null`.
+ * @param tt - Transposition table shared across all nodes in this search.
  * @returns The heuristic value of `cells` from `botColor`'s perspective.
  */
 function minimax(
@@ -131,43 +157,71 @@ function minimax(
     maximizing: boolean,
     botColor: Color,
     enPassantTarget: Position | null,
+    tt: Map<string, TTEntry>,
 ): number {
     const sideToMove: Color = maximizing ? botColor : oppositeColor(botColor);
     const status = getGameStatus(cells, sideToMove, enPassantTarget);
 
     if (status === 'checkmate') return maximizing ? -10_000 : 10_000;
-    if (status === 'stalemate') return maximizing ? -7500 : 7500; // Stalemate return 3/4 of a point to the 'winner'
+    if (status === 'stalemate') return maximizing ? -7_500 : 7_500;
     if (depth === 0) return evaluate(cells, botColor);
+
+    // Transposition table lookup — adjust alpha/beta bounds or return early if exact.
+    const ttKey = `${positionKey(cells, enPassantTarget)}|${depth}|${maximizing ? 1 : 0}`;
+    const entry = tt.get(ttKey);
+    if (entry !== undefined) {
+        if (entry.flag === 'exact') return entry.score;
+        if (entry.flag === 'lower') alpha = Math.max(alpha, entry.score);
+        else                        beta  = Math.min(beta,  entry.score);
+        if (alpha >= beta) return entry.score;
+    }
+
+    const origAlpha = alpha;
+    const origBeta  = beta;
 
     const moves = getAllMoves(cells, sideToMove, enPassantTarget)
         .sort((a, b) => scoreMove(cells, b) - scoreMove(cells, a));
 
+    let best: number;
+    let cutoff = false;
+
     if (maximizing) {
-        let best = -Infinity;
+        best = -Infinity;
         for (const move of moves) {
             const next = simulateMove(cells, move, enPassantTarget, sideToMove);
-            const score = minimax(next, depth - 1, alpha, beta, false, botColor, newEnPassant(cells, move));
-            best = Math.max(best, score);
-            alpha = Math.max(alpha, score);
-            if (beta <= alpha) break;
+            const score = minimax(next, depth - 1, alpha, beta, false, botColor, newEnPassant(cells, move), tt);
+            if (score > best) best = score;
+            if (score > alpha) alpha = score;
+            if (alpha >= beta) { cutoff = true; break; }
         }
-        return best;
     }
     else {
-        let best = Infinity;
+        best = Infinity;
         for (const move of moves) {
             const next = simulateMove(cells, move, enPassantTarget, sideToMove);
-            const score = minimax(next, depth - 1, alpha, beta, true, botColor, newEnPassant(cells, move));
-            best = Math.min(best, score);
-            beta = Math.min(beta, score);
-            if (beta <= alpha) break;
+            const score = minimax(next, depth - 1, alpha, beta, true, botColor, newEnPassant(cells, move), tt);
+            if (score < best) best = score;
+            if (score < beta) beta = score;
+            if (alpha >= beta) { cutoff = true; break; }
         }
-        return best;
     }
+
+    // Store with the correct bound type so future lookups can use or narrow alpha/beta.
+    let flag: TTEntry['flag'];
+    if (!cutoff) {
+        flag = 'exact';
+    } else if (maximizing) {
+        flag = best >= origBeta ? 'lower' : 'upper';
+    } else {
+        flag = best <= origAlpha ? 'upper' : 'lower';
+    }
+    tt.set(ttKey, { score: best, flag });
+
+    return best;
 }
 
-/** Minimax search depth for each difficulty level. */
-const DEPTH: Record<Difficulty, number> = { easy: 1, medium: 2, hard: 3 };
+/** Minimax search depth for medium and hard. Easy returns a random move before this is consulted. */
+const DEPTH: Record<'medium' | 'hard', number> = { medium: 2, hard: 3 };
 
 /**
  * Selects the best move for the bot using alpha-beta minimax.
@@ -186,13 +240,14 @@ export function getBotMove(cells: Cell[], botColor: Color, enPassantTarget: Posi
     if (difficulty === 'easy')
         return moves[Math.floor(Math.random() * moves.length)];
 
-    const depth = DEPTH[difficulty];
+    const depth = DEPTH[difficulty as 'medium' | 'hard'];
+    const tt = new Map<string, TTEntry>();
     let bestMove: Move | null = null;
     let bestScore = -Infinity;
 
     for (const move of moves) {
         const next = simulateMove(cells, move, enPassantTarget, botColor);
-        const score = minimax(next, depth - 1, -Infinity, Infinity, false, botColor, newEnPassant(cells, move));
+        const score = minimax(next, depth - 1, -Infinity, Infinity, false, botColor, newEnPassant(cells, move), tt);
         if (score > bestScore) {
             bestScore = score;
             bestMove = move;

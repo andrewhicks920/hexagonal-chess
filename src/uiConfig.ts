@@ -2,7 +2,9 @@ const HIGHLIGHT_DEFAULTS = {
     '--highlight-selected': 'rgba(255, 255, 0, 0.45)',
     '--highlight-move':     'rgba(0, 200, 0, 0.45)',
     '--highlight-check':    'rgba(220, 0, 0, 0.5)',
+    '--grid-stroke':        '#111',
 } as const;
+
 
 // Tile.tsx now uses HIGHLIGHT_DEFAULTS, which is the same mechanism as the tile colors.
 // If you want the bubblegum theme to have pink highlights, for example, just override those three vars in its entry
