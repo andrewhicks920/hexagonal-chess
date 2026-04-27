@@ -15,16 +15,53 @@ import { themes, type ThemeName } from '../uiConfig.ts';
 import type { Color } from '../game/types.ts';
 import { PlayerAvatar } from '../components/PlayerAvatar/PlayerAvatar.tsx';
 
+/**
+ * Supported play modes for a game session.
+ *
+ * - `'local'` — two human players on the same device.
+ * - `'analysis'` — single player with full engine analysis and position tools.
+ * - `'bot'` — human vs. computer AI.
+ * - `'online'` — remote multiplayer (reserved; not yet implemented).
+ */
 type GameMode = 'local' | 'analysis' | 'bot' | 'online';
 
+/**
+ * Props for {@link GamePage}.
+ */
 interface GamePageProps {
+    /** Determines which game mode is active and which UI panels are shown. */
     mode: GameMode;
+    /** Currently selected board colour theme. */
     themeName: ThemeName;
+    /** Currently selected piece set identifier. */
     pieceSet: string;
+    /** Called when the user changes the board theme in Settings. */
     onThemeChange: (t: ThemeName) => void;
+    /** Called when the user changes the piece set in Settings. */
     onPieceSetChange: (p: string) => void;
 }
 
+/**
+ * Main in-game view for all play modes of Glinski's Hexagonal Chess.
+ *
+ * Composes the three core hooks ({@link useGame}, {@link useBot},
+ * {@link useAnalysis}) and renders:
+ * - A hexagonal {@link Board} with player-panel headers showing avatars,
+ *   captured pieces, and an active-turn indicator.
+ * - A right-hand sidebar with move history and game controls (or an
+ *   {@link AnalysisPanel} in analysis mode).
+ * - An {@link EvalBar} evaluation bar alongside the board in analysis mode.
+ * - A {@link BotSetup} overlay before a bot game begins.
+ * - A {@link Settings} overlay when the user opens the settings panel.
+ *
+ * In `'bot'` mode, player clicks during the opponent's turn are silently
+ * swallowed to prevent invalid state mutations.
+ *
+ * Stalemate scoring follows Glinski's original rules: the stalemated side
+ * receives ¾ of a point rather than the standard ½.
+ *
+ * @param props - See {@link GamePageProps}.
+ */
 export function GamePage({ mode, themeName, pieceSet, onThemeChange, onPieceSetChange }: GamePageProps) {
     const [settingsOpen, setSettingsOpen] = useState(false);
 

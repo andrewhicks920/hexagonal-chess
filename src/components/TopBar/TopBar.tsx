@@ -11,7 +11,7 @@ export function TopBar({ onSettingsOpen }: TopBarProps) {
         <header className="top-bar">
             <Link to="/" className="top-bar-logo">
                 <img
-                    src={`${import.meta.env.BASE_URL}hexchess_logo.svg`}
+                    src={`${import.meta.env.BASE_URL}favicon.svg`}
                     alt="HexChess"
                     className="top-bar-logo-img"
                 />

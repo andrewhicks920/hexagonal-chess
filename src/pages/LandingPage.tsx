@@ -14,6 +14,10 @@ import rookImg   from '../assets/carouselImages/Glinski_Chess_Rook.svg';
 import queenImg  from '../assets/carouselImages/Glinski_Chess_Queen.svg';
 import kingImg   from '../assets/carouselImages/Glinski_Chess_King.svg';
 
+/**
+ * Ordered array of SVG diagram slides shown in the {@link PieceCarousel}.
+ * Each entry maps a pre-imported image asset to a human-readable caption.
+ */
 const SLIDES = [
     { src: boardImg,  label: 'Starting Position' },
     { src: pawnImg,   label: 'Pawn: \nCaptures (×), \nWhite Promotion Tiles (★)'},
@@ -24,8 +28,17 @@ const SLIDES = [
     { src: kingImg,   label: 'King Moves'},
 ] as const;
 
+/** Milliseconds between automatic slide advances when the carousel is not paused. */
 const SLIDE_INTERVAL = 3500;
 
+/**
+ * Auto-advancing image carousel that illustrates piece movement diagrams for
+ * Glinski's Hexagonal Chess.
+ *
+ * Cycles through {@link SLIDES} every {@link SLIDE_INTERVAL} ms. Auto-advance
+ * is suspended while the user hovers over the carousel. Navigation buttons
+ * and dot indicators allow manual control at any time.
+ */
 function PieceCarousel() {
     const [index, setIndex] = useState(0);
     const [paused, setPaused] = useState(false);
@@ -80,23 +93,48 @@ function PieceCarousel() {
     );
 }
 
+/**
+ * Props for {@link LandingPage}.
+ */
 interface LandingPageProps {
+    /** Currently selected board colour theme, forwarded to {@link Settings}. */
     themeName: ThemeName;
+    /** Currently selected piece set identifier, forwarded to {@link Settings}. */
     pieceSet: string;
+    /** Called when the user changes the board theme in Settings. */
     onThemeChange: (t: ThemeName) => void;
+    /** Called when the user changes the piece set in Settings. */
     onPieceSetChange: (p: string) => void;
 }
 
+/**
+ * Props for a single {@link ModeCard} entry in the landing-page mode selector.
+ */
 interface ModeCardProps {
+    /** Icon element rendered at the start of the card. */
     icon: ReactNode;
+    /** Short mode name displayed as the card heading. */
     title: string;
+    /** One-line description of the mode shown below the title. */
     desc: string;
+    /** Optional badge label (e.g. "Coming Soon") overlaid on the card. */
     badge?: string;
+    /** When `true`, the card receives the primary visual emphasis style. */
     primary?: boolean;
+    /** When `true`, the card is visually dimmed and its `onClick` is suppressed. */
     disabled?: boolean;
+    /** Invoked when the user clicks an enabled card. */
     onClick: () => void;
 }
 
+/**
+ * Clickable card representing a single game mode on the landing page.
+ *
+ * Rendered as a `<button>` so it is keyboard-accessible. Disabled cards
+ * suppress the click handler entirely rather than relying solely on CSS.
+ *
+ * @param props - See {@link ModeCardProps}.
+ */
 function ModeCard({ icon, title, desc, badge, primary, disabled, onClick }: ModeCardProps) {
     const classes = [
         'mode-card',
@@ -116,6 +154,21 @@ function ModeCard({ icon, title, desc, badge, primary, disabled, onClick }: Mode
     );
 }
 
+/**
+ * Home screen of the Glinski Hexagonal Chess application.
+ *
+ * Presents:
+ * - A {@link PieceCarousel} showing movement diagrams for each piece type.
+ * - A headline and subtitle introducing the variant.
+ * - A grid of {@link ModeCard} buttons for launching the four game modes
+ *   (Local, vs Computer, Online, Analysis). "Play Online" is currently
+ *   disabled with a "Coming Soon" badge.
+ * - A {@link Settings} overlay opened via the {@link TopBar}.
+ *
+ * Navigation to game routes is handled with React Router's `useNavigate`.
+ *
+ * @param props - See {@link LandingPageProps}.
+ */
 export function LandingPage({ themeName, pieceSet, onThemeChange, onPieceSetChange }: LandingPageProps) {
     const navigate = useNavigate();
     const [settingsOpen, setSettingsOpen] = useState(false);

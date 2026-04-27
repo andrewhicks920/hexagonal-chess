@@ -15,23 +15,51 @@ export type { PromoPieceType };
 
 /** Tracks a pawn promotion that is waiting for the player to pick a piece. */
 interface PendingPromotion {
+    /** Board square that the promoting pawn now occupies. */
     pos: Position;
+    /**
+     * Partial move notation built before the promotion piece was chosen
+     * (e.g. `"g6"` for a pawn that moved to g6). The chosen piece letter and
+     * any check symbol are appended once the player confirms their selection.
+     */
     baseNotation: string;
+    /** Color of the pawn that is promoting. */
     color: Color;
 }
 
 /** Full board snapshot pushed before each move so undo can restore it. */
 interface GameSnapshot {
+    /** Complete array of board cells at the time of the snapshot. */
     cells: Cell[];
+    /** Whose turn it was before the move was applied. */
     currentTurn: Color;
+    /** En-passant target square active at the time of the snapshot. */
     enPassantTarget: Position | null;
+    /** Game status at the time of the snapshot. */
     gameStatus: 'playing' | 'check' | 'checkmate' | 'stalemate';
+    /** Pieces captured by white up to and including this point. */
     capturedByWhite: Piece[];
+    /** Pieces captured by black up to and including this point. */
     capturedByBlack: Piece[];
+    /** Move history list at the time of the snapshot. */
     moveHistory: MoveRecord[];
+    /** Any pending promotion state that was active at the time of the snapshot. */
     pendingPromotion: PendingPromotion | null;
 }
 
+/**
+ * Determines which piece (if any) is captured by a move to `to`.
+ *
+ * Handles both normal captures (a piece already occupying `to`) and
+ * en-passant captures, where the captured pawn sits on an adjacent rank
+ * rather than on `to` itself.
+ *
+ * @param cells - Current board cells.
+ * @param to - Destination square of the moving piece.
+ * @param enPassantTarget - Active en-passant target square, or `null`.
+ * @param movingColor - Color of the piece that is moving.
+ * @returns The captured {@link Piece}, or `null` if the move is not a capture.
+ */
 function findCapture(cells: Cell[], to: Position, enPassantTarget: Position | null, movingColor: Color): Piece | null {
     const normal = cells.find(c => samePos(c, to))?.piece ?? null;
     if (normal) return normal;
@@ -44,6 +72,42 @@ function findCapture(cells: Cell[], to: Position, enPassantTarget: Position | nu
 // Hook
 // ---------------------------------------------------------------------------
 
+/**
+ * Central state machine for a Glinski Hexagonal Chess game.
+ *
+ * Manages the full lifecycle of a game: board initialisation, legal-move
+ * generation, move execution (including en-passant and promotion), game-status
+ * evaluation, move-history recording, undo, and position loading from JAN /
+ * PGN strings.
+ *
+ * The snapshot stack is stored in a ref rather than state so that pushing and
+ * popping snapshots does not trigger unnecessary re-renders.
+ *
+ * @returns An object containing the complete game state and all actions needed
+ *   to drive the UI:
+ *
+ * | Property | Description |
+ * |---       |---          |
+ * | `cells` | Current array of board cells. |
+ * | `currentTurn` | Color whose turn it is to move. |
+ * | `selectedPos` | Currently selected piece position, or `null`. |
+ * | `validMoves` | Legal destination squares for the selected piece. |
+ * | `handleCellClick` | Click handler for human players — selects pieces and executes moves. |
+ * | `executeBotMove` | Executes a move directly (used by the bot hook). |
+ * | `gameStatus` | Current game status: `'playing'`, `'check'`, `'checkmate'`, or `'stalemate'`. |
+ * | `capturedByWhite` | Pieces captured by the white player. |
+ * | `capturedByBlack` | Pieces captured by the black player. |
+ * | `promotionPending` | Square of a pawn awaiting promotion, or `null`. |
+ * | `confirmPromotion` | Resolves a pending promotion with the chosen piece type. |
+ * | `resetGame` | Restores the board to the standard Glinski starting position. |
+ * | `clearSelection` | Deselects the currently selected piece without making a move. |
+ * | `moveHistory` | Ordered list of move records in the game's notation format. |
+ * | `enPassantTarget` | Square that can be captured en-passant this half-move, or `null`. |
+ * | `undoMove` | Pops the most-recent snapshot and restores the previous game state. |
+ * | `canUndo` | `true` when there is at least one move to undo. |
+ * | `loadPosition` | Replaces the board with a position parsed from a JAN string. |
+ * | `loadPgn` | Replays a full game from a PGN-style move token string. |
+ */
 export function useGame() {
     const [cells, setCells] = useState<Cell[]>(() => generateBoard());
     const [currentTurn, setCurrentTurn] = useState<Color>('white');
@@ -60,6 +124,17 @@ export function useGame() {
     // Snapshot stack stored in a ref — changes here don't need to trigger re-renders.
     const snapshotsRef = useRef<GameSnapshot[]>([]);
 
+    /**
+     * Applies a validated move from `from` to `to`, updating all game state.
+     *
+     * Pushes the current state onto the undo stack before mutating anything.
+     * If the move results in a pawn reaching a promotion square, the turn is
+     * NOT advanced; instead a {@link PendingPromotion} is stored and the move
+     * history entry is deferred until {@link confirmPromotion} is called.
+     *
+     * @param from - Origin square of the piece being moved.
+     * @param to - Destination square.
+     */
     const executeMove = useCallback((from: Position, to: Position) => {
         const movingPiece = cells.find(c => samePos(c, from))?.piece;
         if (!movingPiece) return;
@@ -107,6 +182,21 @@ export function useGame() {
         }
     }, [cells, currentTurn, enPassantTarget, gameStatus, capturedByWhite, capturedByBlack, moveHistory, pendingPromotion]);
 
+    /**
+     * Handles a human player clicking on a board cell.
+     *
+     * Selection/move logic (in priority order):
+     * 1. If a promotion is pending, the click is ignored.
+     * 2. If the game is over, the click is ignored.
+     * 3. If a piece is selected and the clicked square is a valid destination,
+     *    the move is executed.
+     * 4. If the clicked cell belongs to the current player, it becomes selected
+     *    and its legal moves are computed.
+     * 5. Otherwise the selection is cleared.
+     *
+     * @param q - Axial column coordinate of the clicked cell.
+     * @param r - Axial row coordinate of the clicked cell.
+     */
     const handleCellClick = useCallback((q: number, r: number) => {
         if (pendingPromotion) return;
         if (gameStatus === 'checkmate' || gameStatus === 'stalemate') return;
@@ -129,6 +219,12 @@ export function useGame() {
         setValidMoves([]);
     }, [cells, currentTurn, selectedPos, validMoves, enPassantTarget, gameStatus, pendingPromotion, executeMove]);
 
+    /**
+     * Resets all game state to the standard Glinski starting position.
+     *
+     * Clears the undo stack, captured pieces, move history, and any pending
+     * promotion. White moves first.
+     */
     const resetGame = useCallback(() => {
         setCells(generateBoard());
         setCurrentTurn('white');
@@ -144,6 +240,13 @@ export function useGame() {
         setCanUndo(false);
     }, []);
 
+    /**
+     * Pops the most-recent {@link GameSnapshot} from the undo stack and
+     * restores all game state to that point.
+     *
+     * Does nothing if the stack is empty. The selection is always cleared on
+     * undo regardless of the restored snapshot's selection state.
+     */
     const undoMove = useCallback(() => {
         const stack = snapshotsRef.current;
         if (stack.length === 0) return;
@@ -163,7 +266,17 @@ export function useGame() {
         setCanUndo(snapshotsRef.current.length > 0);
     }, []);
 
-    /** Load a custom position from a JAN string. */
+    /**
+     * Loads a custom starting position from a JAN (JSON Algebraic Notation)
+     * string, replacing the current board state.
+     *
+     * The board geometry is regenerated from scratch and pieces are placed
+     * according to the parsed JAN data. All other state (turn, history, undo
+     * stack) is reset to defaults. Logs a warning and leaves the board
+     * unchanged if the JAN string is invalid.
+     *
+     * @param jan - A JAN-format string describing the piece placement.
+     */
     const loadPosition = useCallback((jan: string) => {
         try {
             const pieces = parseJan(jan);
@@ -189,9 +302,21 @@ export function useGame() {
     }, []);
 
     /**
-     * Replay a game from SAN-style move tokens (our own notation format).
-     * Accepts the same format this app exports: move numbers are optional and stripped.
-     * Example: "1. e4 e5 2. Nf3 Nc6"
+     * Replays a game from a PGN-style move token string, restoring the board
+     * to the final position and populating the undo stack so every half-move
+     * can be stepped back through.
+     *
+     * The format mirrors the app's own export: move numbers are optional and
+     * are stripped before processing. Result tokens (`1-0`, `0-1`, etc.) are
+     * also stripped. Replay stops early on the first unparseable token or if
+     * the game reaches checkmate/stalemate.
+     *
+     * @example
+     * ```ts
+     * loadPgn('1. e4 e5 2. Nf3 Nc6');
+     * ```
+     *
+     * @param pgn - PGN-style string containing the move tokens to replay.
      */
     const loadPgn = useCallback((pgn: string) => {
         const tokens = pgn
@@ -268,11 +393,23 @@ export function useGame() {
         setCanUndo(newSnapshots.length > 0);
     }, []);
 
+    /** Deselects the currently selected piece without executing any move. */
     const clearSelection = useCallback(() => {
         setSelectedPos(null);
         setValidMoves([]);
     }, []);
 
+    /**
+     * Resolves a pending pawn promotion by replacing the promoting pawn with
+     * the chosen piece, then advancing the turn and evaluating game status.
+     *
+     * Also finalises the deferred move-history entry with the promotion
+     * suffix (e.g. `=Q`) and any check/checkmate symbol.
+     *
+     * Does nothing if there is no promotion currently pending.
+     *
+     * @param pieceType - The piece type the player (or bot) has chosen.
+     */
     const confirmPromotion = useCallback((pieceType: PromoPieceType) => {
         if (!pendingPromotion) return;
         const { pos, baseNotation, color } = pendingPromotion;
