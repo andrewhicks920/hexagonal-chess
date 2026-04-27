@@ -1,24 +1,50 @@
 import { type Cell, type Color, type Position, type PieceType, oppositeColor } from './types';
-import { getLegalMoves, getGameStatus } from './gameLogic';
-import { applyMove } from './board';
+import { getLegalMoves, getGameStatus, isPromotionSquare } from './gameLogic';
+import { applyMove, computeEnPassantTarget, FILES } from './board';
 
+/** Bot difficulty level, mapped to minimax search depth. */
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
+/**
+ * Static piece values (in pawn units) used by the evaluation function.
+ * King's value is deliberately large to dominate the score in checkmate positions.
+ */
 const PIECE_VALUES: Record<PieceType, number> = {
-    pawn: 100,
-    knight: 300,
-    bishop: 350,
-    rook: 500,
-    queen: 1000,
-    king: 100000,
+    pawn: 1,
+    knight: 3,
+    bishop: 3.5,
+    rook: 5,
+    queen: 9,
+    king: 100,
 };
 
+/** A from–to pair representing a single half-move. */
 interface Move {
     from: Position;
     to: Position;
 }
 
-function evaluate(cells: Cell[], color: Color): number {
+/**
+ * Transposition table entry.
+ * `flag` distinguishes exact minimax values from alpha/beta bounds:
+ *   - `'exact'`  — the stored score is the true minimax value.
+ *   - `'lower'`  — a beta cutoff occurred; true value ≥ score.
+ *   - `'upper'`  — a fail-low occurred; true value ≤ score.
+ */
+interface TTEntry {
+    score: number;
+    flag: 'exact' | 'lower' | 'upper';
+}
+
+/**
+ * Static material evaluation relative to `color`.
+ * Returns the sum of `color`'s piece values minus the opponent's.
+ *
+ * @param cells - Board state to evaluate.
+ * @param color - The side the score is expressed from (positive = `color` is ahead).
+ * @returns Net material advantage in pawn units.
+ */
+export function evaluate(cells: Cell[], color: Color): number {
     let score = 0;
     for (const cell of cells) {
         if (!cell.piece) continue;
@@ -28,13 +54,76 @@ function evaluate(cells: Cell[], color: Color): number {
     return score;
 }
 
+/**
+ * Computes the en-passant target that results from `move`, or `null`.
+ * Thin wrapper around {@link computeEnPassantTarget} so minimax call sites stay readable.
+ *
+ * @param cells - Board state before the move is applied.
+ * @param move - The half-move being played.
+ * @returns The en-passant target square for the next ply, or `null`.
+ */
 function newEnPassant(cells: Cell[], move: Move): Position | null {
     const piece = cells.find(c => c.q === move.from.q && c.r === move.from.r)?.piece;
-    if (piece?.type !== 'pawn') return null;
-    if (Math.abs(move.to.r - move.from.r) !== 2) return null;
-    return { q: move.to.q, r: (move.from.r + move.to.r) / 2 };
+    return computeEnPassantTarget(move.from, move.to, piece);
 }
 
+/**
+ * Applies `move` to `cells` and auto-promotes any pawn to queen.
+ * Auto-promotion to queen is used so minimax always evaluates the strongest resulting piece;
+ * the actual promotion choice is handled separately in the UI layer.
+ *
+ * @param cells - Board state before the move.
+ * @param move - The half-move to apply.
+ * @param enPassantTarget - En-passant target available this ply, or `null`.
+ * @param color - Side making the move.
+ * @returns A new `Cell[]` with the move applied and any promotion resolved to queen.
+ */
+function simulateMove(cells: Cell[], move: Move, enPassantTarget: Position | null, color: Color): Cell[] {
+    const next = applyMove(cells, move.from, move.to, enPassantTarget, color);
+    const piece = cells.find(c => c.q === move.from.q && c.r === move.from.r)?.piece;
+
+    if (piece?.type === 'pawn' && isPromotionSquare(move.to.q, move.to.r, color)) {
+        return next.map(cell =>
+            cell.q === move.to.q && cell.r === move.to.r
+                ? { ...cell, piece: { type: 'queen', color } }
+                : cell,
+        );
+    }
+    return next;
+}
+
+/**
+ * Builds a compact string key for the current board position + en-passant state.
+ * Cells are always generated in the same order (from `generateBoard`), so no sort is needed.
+ */
+function positionKey(cells: Cell[], enPassantTarget: Position | null): string {
+    let key = '';
+    for (const cell of cells) {
+        if (cell.piece) key += `${cell.q},${cell.r}${cell.piece.color[0]}${cell.piece.type[0]};`;
+    }
+    if (enPassantTarget) key += `e${enPassantTarget.q},${enPassantTarget.r}`;
+    return key;
+}
+
+/**
+ * MVV-LVA score for move ordering: captures are searched first, prioritizing
+ * high-value victims captured by low-value attackers, so alpha-beta cuts off more branches.
+ */
+function scoreMove(cells: Cell[], move: Move): number {
+    const victim = cells.find(c => c.q === move.to.q && c.r === move.to.r)?.piece;
+    if (!victim) return 0;
+    const attacker = cells.find(c => c.q === move.from.q && c.r === move.from.r)?.piece;
+    return PIECE_VALUES[victim.type] - (attacker ? PIECE_VALUES[attacker.type] * 0.1 : 0);
+}
+
+/**
+ * Returns every legal move available to `color` in the given position.
+ *
+ * @param cells - Current board state.
+ * @param color - The side whose moves to enumerate.
+ * @param enPassantTarget - En-passant landing square available this turn, or `null`.
+ * @returns All legal `Move` objects for `color`, in an unspecified order before sorting.
+ */
 function getAllMoves(cells: Cell[], color: Color, enPassantTarget: Position | null): Move[] {
     const moves: Move[] = [];
     for (const cell of cells) {
@@ -47,6 +136,19 @@ function getAllMoves(cells: Cell[], color: Color, enPassantTarget: Position | nu
     return moves;
 }
 
+/**
+ * Alpha-beta minimax search with a transposition table.
+ *
+ * @param cells - Board state at this node of the search tree.
+ * @param depth - Remaining plies to search; returns the static evaluation at 0.
+ * @param alpha - Lower bound for the maximizing player (best already found).
+ * @param beta  - Upper bound for the minimizing player (best already found).
+ * @param maximizing - `true` when it is the bot's turn to move.
+ * @param botColor - The side the bot is playing; scores are always relative to this color.
+ * @param enPassantTarget - En-passant target square available to the side to move at this node, or `null`.
+ * @param tt - Transposition table shared across all nodes in this search.
+ * @returns The heuristic value of `cells` from `botColor`'s perspective.
+ */
 function minimax(
     cells: Cell[],
     depth: number,
@@ -55,62 +157,195 @@ function minimax(
     maximizing: boolean,
     botColor: Color,
     enPassantTarget: Position | null,
+    tt: Map<string, TTEntry>,
 ): number {
     const sideToMove: Color = maximizing ? botColor : oppositeColor(botColor);
     const status = getGameStatus(cells, sideToMove, enPassantTarget);
 
-    if (status === 'checkmate') return maximizing ? -1_000_000 : 1_000_000;
-    if (status === 'stalemate') return 0;
+    if (status === 'checkmate') return maximizing ? -10_000 : 10_000;
+    if (status === 'stalemate') return maximizing ? -7_500 : 7_500;
     if (depth === 0) return evaluate(cells, botColor);
 
-    const moves = getAllMoves(cells, sideToMove, enPassantTarget);
+    // Transposition table lookup — adjust alpha/beta bounds or return early if exact.
+    const ttKey = `${positionKey(cells, enPassantTarget)}|${depth}|${maximizing ? 1 : 0}`;
+    const entry = tt.get(ttKey);
+    if (entry !== undefined) {
+        if (entry.flag === 'exact') return entry.score;
+        if (entry.flag === 'lower') alpha = Math.max(alpha, entry.score);
+        else                        beta  = Math.min(beta,  entry.score);
+        if (alpha >= beta) return entry.score;
+    }
+
+    const origAlpha = alpha;
+    const origBeta  = beta;
+
+    const moves = getAllMoves(cells, sideToMove, enPassantTarget)
+        .sort((a, b) => scoreMove(cells, b) - scoreMove(cells, a));
+
+    let best: number;
+    let cutoff = false;
 
     if (maximizing) {
-        let best = -Infinity;
+        best = -Infinity;
         for (const move of moves) {
-            const next = applyMove(cells, move.from, move.to, enPassantTarget, sideToMove);
-            const score = minimax(next, depth - 1, alpha, beta, false, botColor, newEnPassant(cells, move));
-            best = Math.max(best, score);
-            alpha = Math.max(alpha, score);
-            if (beta <= alpha) break;
+            const next = simulateMove(cells, move, enPassantTarget, sideToMove);
+            const score = minimax(next, depth - 1, alpha, beta, false, botColor, newEnPassant(cells, move), tt);
+            if (score > best) best = score;
+            if (score > alpha) alpha = score;
+            if (alpha >= beta) { cutoff = true; break; }
         }
-        return best;
     }
     else {
-        let best = Infinity;
+        best = Infinity;
         for (const move of moves) {
-            const next = applyMove(cells, move.from, move.to, enPassantTarget, sideToMove);
-            const score = minimax(next, depth - 1, alpha, beta, true, botColor, newEnPassant(cells, move));
-            best = Math.min(best, score);
-            beta = Math.min(beta, score);
-            if (beta <= alpha) break;
+            const next = simulateMove(cells, move, enPassantTarget, sideToMove);
+            const score = minimax(next, depth - 1, alpha, beta, true, botColor, newEnPassant(cells, move), tt);
+            if (score < best) best = score;
+            if (score < beta) beta = score;
+            if (alpha >= beta) { cutoff = true; break; }
         }
-        return best;
     }
+
+    // Store with the correct bound type so future lookups can use or narrow alpha/beta.
+    let flag: TTEntry['flag'];
+    if (!cutoff) {
+        flag = 'exact';
+    } else if (maximizing) {
+        flag = best >= origBeta ? 'lower' : 'upper';
+    } else {
+        flag = best <= origAlpha ? 'upper' : 'lower';
+    }
+    tt.set(ttKey, { score: best, flag });
+
+    return best;
 }
 
-const DEPTH: Record<Difficulty, number> = { easy: 1, medium: 2, hard: 3 };
+/** Minimax search depth for medium and hard. Easy returns a random move before this is consulted. */
+const DEPTH: Record<'medium' | 'hard', number> = { medium: 2, hard: 3 };
 
-export function getBotMove(
+/** One engine-suggested move with its evaluation score (from white's perspective). */
+export interface AnalysisMoveResult {
+    from: Position;
+    to: Position;
+    /** Score in pawn units from white's perspective after this move. */
+    score: number;
+    /** Human-readable SAN-style notation, e.g. "Nf3" or "exd5". */
+    notation: string;
+}
+
+/** Full analysis result for a position. */
+export interface AnalysisResult {
+    /** Position evaluation in pawn units from white's perspective. */
+    score: number;
+    /** Top N engine-suggested moves, best first. */
+    topMoves: AnalysisMoveResult[];
+}
+
+const PIECE_LETTER: Record<PieceType, string> = {
+    king: 'K', queen: 'Q', rook: 'R', bishop: 'B', knight: 'N', pawn: '',
+};
+
+function moveToNotation(cells: Cell[], move: Move, enPassantTarget: Position | null): string {
+    const piece = cells.find(c => c.q === move.from.q && c.r === move.from.r)?.piece;
+    if (!piece) return '?';
+
+    const toFile = FILES[move.to.q + 5] ?? '?';
+    const toRank = move.to.q + move.to.r + 6;
+    const isCapture = !!(
+        cells.find(c => c.q === move.to.q && c.r === move.to.r)?.piece ??
+        (enPassantTarget && move.to.q === enPassantTarget.q && move.to.r === enPassantTarget.r)
+    );
+    const capSym = isCapture ? 'x' : '';
+
+    if (piece.type === 'pawn') {
+        if (isCapture) return `${FILES[move.from.q + 5]}x${toFile}${toRank}`;
+        return `${toFile}${toRank}`;
+    }
+
+    const ambiguous = cells.some(c =>
+        c.piece?.type === piece.type &&
+        c.piece?.color === piece.color &&
+        !(c.q === move.from.q && c.r === move.from.r) &&
+        getLegalMoves(cells, { q: c.q, r: c.r }, enPassantTarget)
+            .some(m => m.q === move.to.q && m.r === move.to.r),
+    );
+    const disambig = ambiguous ? (FILES[move.from.q + 5] ?? '') : '';
+
+    return `${PIECE_LETTER[piece.type]}${disambig}${capSym}${toFile}${toRank}`;
+}
+
+/**
+ * Evaluates the current position at the given depth and returns the top N moves.
+ * Scores are always expressed from white's perspective (positive = white ahead).
+ *
+ * @param cells - Current board state.
+ * @param currentTurn - Side to move.
+ * @param enPassantTarget - En-passant target square, or `null`.
+ * @param topN - Number of top moves to return.
+ * @param depth - Minimax search depth.
+ */
+export function getAnalysisResult(
     cells: Cell[],
-    botColor: Color,
+    currentTurn: Color,
     enPassantTarget: Position | null,
-    difficulty: Difficulty,
-): Move | null {
+    topN = 5,
+    depth = 3,
+): AnalysisResult {
+    const status = getGameStatus(cells, currentTurn, enPassantTarget);
+    if (status === 'checkmate') {
+        const score = currentTurn === 'white' ? -10_000 : 10_000;
+        return { score, topMoves: [] };
+    }
+    if (status === 'stalemate') return { score: 0, topMoves: [] };
+
+    const maximizing = currentTurn === 'white';
+    const moves = getAllMoves(cells, currentTurn, enPassantTarget)
+        .sort((a, b) => scoreMove(cells, b) - scoreMove(cells, a));
+
+    const tt = new Map<string, TTEntry>();
+
+    const scored: AnalysisMoveResult[] = moves.map(move => {
+        const next = simulateMove(cells, move, enPassantTarget, currentTurn);
+        const score = minimax(
+            next, depth - 1, -Infinity, Infinity,
+            !maximizing, 'white', newEnPassant(cells, move), tt,
+        );
+        return { from: move.from, to: move.to, score, notation: moveToNotation(cells, move, enPassantTarget) };
+    });
+
+    scored.sort((a, b) => maximizing ? b.score - a.score : a.score - b.score);
+
+    return {
+        score: scored[0]?.score ?? evaluate(cells, 'white'),
+        topMoves: scored.slice(0, topN),
+    };
+}
+
+/**
+ * Selects the best move for the bot using alpha-beta minimax.
+ * On `'easy'` difficulty a random legal move is returned instead of a search.
+ *
+ * @param cells - Current board state.
+ * @param botColor - The side the bot is playing.
+ * @param enPassantTarget - En-passant landing square available this turn, or `null`.
+ * @param difficulty - Search depth: `'easy'` picks randomly, `'medium'` searches 2 plies, `'hard'` 3 plies.
+ * @returns The chosen `Move`, or `null` if the bot has no legal moves (checkmate or stalemate).
+ */
+export function getBotMove(cells: Cell[], botColor: Color, enPassantTarget: Position | null, difficulty: Difficulty,): Move | null {
     const moves = getAllMoves(cells, botColor, enPassantTarget);
     if (moves.length === 0) return null;
 
-    if (difficulty === 'easy') {
+    if (difficulty === 'easy')
         return moves[Math.floor(Math.random() * moves.length)];
-    }
 
-    const depth = DEPTH[difficulty];
+    const depth = DEPTH[difficulty as 'medium' | 'hard'];
+    const tt = new Map<string, TTEntry>();
     let bestMove: Move | null = null;
     let bestScore = -Infinity;
 
     for (const move of moves) {
-        const next = applyMove(cells, move.from, move.to, enPassantTarget, botColor);
-        const score = minimax(next, depth - 1, -Infinity, Infinity, false, botColor, newEnPassant(cells, move));
+        const next = simulateMove(cells, move, enPassantTarget, botColor);
+        const score = minimax(next, depth - 1, -Infinity, Infinity, false, botColor, newEnPassant(cells, move), tt);
         if (score > bestScore) {
             bestScore = score;
             bestMove = move;

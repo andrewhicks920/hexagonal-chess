@@ -1,27 +1,19 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Board } from '../components/Board/Board.tsx';
 import { Settings } from '../components/Settings/Settings.tsx';
 import { MoveHistory } from '../components/MoveHistory/MoveHistory.tsx';
 import { CapturedPieces } from '../components/CapturedPieces/CapturedPieces.tsx';
 import { TopBar } from '../components/TopBar/TopBar.tsx';
 import { BotSetup } from '../components/BotSetup/BotSetup.tsx';
+import { EvalBar } from '../components/EvalBar/EvalBar.tsx';
+import { AnalysisPanel } from '../components/AnalysisPanel/AnalysisPanel.tsx';
 import { useGame } from '../hooks/useGame.ts';
-import { getBotMove, type Difficulty } from '../game/ai.ts';
+import { useBot } from '../hooks/useBot.ts';
+import { useAnalysis } from '../hooks/useAnalysis.ts';
+import type { Difficulty } from '../game/ai.ts';
 import { themes, type ThemeName } from '../uiConfig.ts';
 import type { Color } from '../game/types.ts';
-
-function PlayerAvatar({ color }: { color: 'white' | 'black' }) {
-    const bg = color === 'white' ? '#9f9689' : '#555353';
-    const fg = color === 'white' ? '#d4ccc4' : '#3a3838';
-
-    return (
-        <svg className="player-avatar" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-            <rect width="40" height="40" rx="4" fill={bg} />
-            <ellipse cx="20" cy="15" rx="8" ry="9" fill={fg} />
-            <ellipse cx="20" cy="38" rx="15" ry="12" fill={fg} />
-        </svg>
-    );
-}
+import { PlayerAvatar } from '../components/PlayerAvatar/PlayerAvatar.tsx';
 
 type GameMode = 'local' | 'analysis' | 'bot' | 'online';
 
@@ -36,14 +28,6 @@ interface GamePageProps {
 export function GamePage({ mode, themeName, pieceSet, onThemeChange, onPieceSetChange }: GamePageProps) {
     const [settingsOpen, setSettingsOpen] = useState(false);
 
-    // Bot-mode setup state
-    const [botReady, setBotReady] = useState(false);
-    const [playerColor, setPlayerColor] = useState<Color>('white');
-    const [difficulty, setDifficulty] = useState<Difficulty>('medium');
-
-    const botColor: Color = playerColor === 'white' ? 'black' : 'white';
-    const flipped = mode === 'bot' && playerColor === 'black';
-
     const {
         cells,
         currentTurn,
@@ -57,51 +41,46 @@ export function GamePage({ mode, themeName, pieceSet, onThemeChange, onPieceSetC
         promotionPending,
         confirmPromotion,
         resetGame,
+        clearSelection,
         moveHistory,
         enPassantTarget,
+        undoMove,
+        canUndo,
+        loadPosition,
+        loadPgn,
     } = useGame();
 
     const themeVars = themes[themeName] as Record<string, string>;
     const isGameOver = gameStatus === 'checkmate' || gameStatus === 'stalemate';
 
-    // Prevent player from clicking during the bot's turn
+    const { botReady, playerColor, botColor, flipped, isThinking, startBot, resetBot } = useBot({
+        mode,
+        cells,
+        currentTurn,
+        enPassantTarget,
+        isGameOver,
+        promotionPending,
+        executeBotMove,
+        confirmPromotion,
+    });
+
+    const { result: analysisResult, loading: analysisLoading } = useAnalysis(
+        mode === 'analysis',
+        cells,
+        currentTurn,
+        enPassantTarget,
+    );
+
+    // Prevent player from clicking during the bot's turn.
     const wrappedHandleCellClick = useCallback((q: number, r: number) => {
         if (mode === 'bot' && botReady && currentTurn !== playerColor) return;
         handleCellClick(q, r);
     }, [mode, botReady, currentTurn, playerColor, handleCellClick]);
 
-    // Trigger bot move when it's the computer's turn
-    useEffect(() => {
-        if (mode !== 'bot' || !botReady) return;
-        if (currentTurn !== botColor) return;
-        if (isGameOver) return;
-        if (promotionPending) return;
-
-        const timer = setTimeout(() => {
-            const move = getBotMove(cells, botColor, enPassantTarget, difficulty);
-            if (move) executeBotMove(move.from, move.to);
-        }, 350);
-
-        return () => clearTimeout(timer);
-    // cells/enPassantTarget intentionally omitted — currentTurn change is the trigger
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mode, botReady, currentTurn, botColor, isGameOver, promotionPending]);
-
-    // Auto-promote to queen for the bot
-    useEffect(() => {
-        if (mode !== 'bot' || !botReady) return;
-        if (!promotionPending) return;
-        if (currentTurn !== botColor) return;
-        confirmPromotion('queen');
-    }, [mode, botReady, promotionPending, currentTurn, botColor, confirmPromotion]);
-
-
-    function handleBotStart(color: Color, diff: Difficulty) {
-        setPlayerColor(color);
-        setDifficulty(diff);
+    const handleBotStart = useCallback((color: Color, diff: Difficulty) => {
         resetGame();
-        setBotReady(true);
-    }
+        startBot(color, diff);
+    }, [resetGame, startBot]);
 
     let statusMessage = '';
     let statusVariant = '';
@@ -119,8 +98,10 @@ export function GamePage({ mode, themeName, pieceSet, onThemeChange, onPieceSetC
         statusMessage = `${currentTurn === 'white' ? 'White' : 'Black'} is in Check!`;
         statusVariant = 'check';
     }
-
-    const modeLabel = mode === 'analysis' ? 'Analysis' : mode === 'bot' ? 'vs Computer' : mode === 'online' ? 'Online' : 'Local';
+    else if (mode === 'bot' && isThinking) {
+        statusMessage = 'Computer is thinking…';
+        statusVariant = 'thinking';
+    }
 
     // In bot mode, top panel = opponent (bot), bottom panel = player
     const topColor: Color = mode === 'bot' ? botColor : 'black';
@@ -132,59 +113,89 @@ export function GamePage({ mode, themeName, pieceSet, onThemeChange, onPieceSetC
         <div className="app-shell" style={themeVars}>
             <TopBar onSettingsOpen={() => setSettingsOpen(true)} />
             <div className="game-content">
-            <main className="board-area">
-                <div className={`player-panel${currentTurn === topColor && !isGameOver ? ' player-panel--active' : ''}`}>
-                    <PlayerAvatar color={topColor} />
-                    <div className="player-info">
-                        <span className="player-name">{topLabel}</span>
-                        <CapturedPieces pieces={topColor === 'black' ? capturedByBlack : capturedByWhite} pieceSet={pieceSet} />
-                    </div>
-                    {currentTurn === topColor && !isGameOver && <div className="turn-dot" />}
-                </div>
-
-                <Board
-                    cells={cells}
-                    currentTurn={currentTurn}
-                    selectedPos={selectedPos}
-                    validMoves={validMoves}
-                    handleCellClick={wrappedHandleCellClick}
-                    gameStatus={gameStatus}
-                    promotionPending={promotionPending}
-                    confirmPromotion={confirmPromotion}
-                    pieceSet={pieceSet}
-                    flipped={flipped}
-                />
-
-                <div className={`player-panel${currentTurn === bottomColor && !isGameOver ? ' player-panel--active' : ''}`}>
-                    <PlayerAvatar color={bottomColor} />
-                    <div className="player-info">
-                        <span className="player-name">{bottomLabel}</span>
-                        <CapturedPieces pieces={bottomColor === 'white' ? capturedByWhite : capturedByBlack} pieceSet={pieceSet} />
-                    </div>
-                    {currentTurn === bottomColor && !isGameOver && <div className="turn-dot" />}
-                </div>
-            </main>
-
-            <aside className="right-panel">
-                <div className="right-panel-tabs">
-                    <button className="panel-tab panel-tab--active">{modeLabel}</button>
-                    <button className="panel-tab panel-tab--active" style={{ marginLeft: 'auto', borderBottomColor: 'transparent', color: '#9a9998' }}>Moves</button>
-                </div>
-                <MoveHistory moves={moveHistory} />
-                <div className="panel-controls">
-                    {statusMessage && (
-                        <div className={`status-message status-message--${statusVariant}`}>
-                            {statusMessage}
+                <main className="board-area">
+                    <div className={`player-panel${currentTurn === topColor && !isGameOver ? ' player-panel--active' : ''}`}>
+                        <PlayerAvatar color={topColor} className="player-avatar" />
+                        <div className="player-info">
+                            <span className="player-name">{topLabel}</span>
+                            <CapturedPieces pieces={topColor === 'black' ? capturedByBlack : capturedByWhite} pieceSet={pieceSet} />
                         </div>
+                        {currentTurn === topColor && !isGameOver && <div className="turn-dot" />}
+                    </div>
+
+                    <Board
+                        cells={cells}
+                        currentTurn={currentTurn}
+                        selectedPos={selectedPos}
+                        validMoves={validMoves}
+                        handleCellClick={wrappedHandleCellClick}
+                        clearSelection={clearSelection}
+                        gameStatus={gameStatus}
+                        promotionPending={promotionPending}
+                        confirmPromotion={confirmPromotion}
+                        pieceSet={pieceSet}
+                        flipped={flipped}
+                    />
+
+                    <div className={`player-panel${currentTurn === bottomColor && !isGameOver ? ' player-panel--active' : ''}`}>
+                        <PlayerAvatar color={bottomColor} className="player-avatar" />
+                        <div className="player-info">
+                            <span className="player-name">{bottomLabel}</span>
+                            <CapturedPieces pieces={bottomColor === 'white' ? capturedByWhite : capturedByBlack} pieceSet={pieceSet} />
+                        </div>
+                        {currentTurn === bottomColor && !isGameOver && <div className="turn-dot" />}
+                    </div>
+                </main>
+
+                {mode === 'analysis' && (
+                    <EvalBar
+                        score={analysisResult?.score ?? 0}
+                        loading={analysisLoading}
+                    />
+                )}
+
+                <aside className="right-panel">
+                    {mode === 'analysis' ? (
+                        <AnalysisPanel
+                            topMoves={analysisResult?.topMoves ?? []}
+                            loading={analysisLoading}
+                            moveHistory={moveHistory}
+                            canUndo={canUndo}
+                            onUndo={undoMove}
+                            onLoadJan={loadPosition}
+                            onLoadPgn={loadPgn}
+                            onNewGame={resetGame}
+                        />
+                    ) : (
+                        <>
+                            <div className="right-panel-tabs">
+                                <span className="panel-tab panel-tab--active">
+                                    {mode === 'bot' ? 'vs Computer' : mode === 'online' ? 'Online' : 'Local'}
+                                </span>
+                                <span className="panel-tab panel-tab--secondary">Moves</span>
+                            </div>
+                            <MoveHistory moves={moveHistory} />
+                            <div className="panel-controls">
+                                {statusMessage && (
+                                    <div
+                                        role="status"
+                                        aria-live={statusVariant === 'gameover' || statusVariant === 'check' ? 'assertive' : 'polite'}
+                                        aria-atomic="true"
+                                        className={`status-message status-message--${statusVariant}`}
+                                    >
+                                        {statusMessage}
+                                    </div>
+                                )}
+                                <button className="new-game-btn" onClick={() => {
+                                    resetGame();
+                                    if (mode === 'bot') resetBot();
+                                }}>
+                                    + New Game
+                                </button>
+                            </div>
+                        </>
                     )}
-                    <button className="new-game-btn" onClick={() => {
-                        resetGame();
-                        if (mode === 'bot') setBotReady(false);
-                    }}>
-                        + New Game
-                    </button>
-                </div>
-            </aside>
+                </aside>
             </div>
 
             {mode === 'bot' && !botReady && (

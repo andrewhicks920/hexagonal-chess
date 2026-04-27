@@ -1,5 +1,38 @@
 import {type Cell, type CellColor, type Color, type Piece, type PieceType, type Position} from './types';
 
+/** Ordered file labels for Glinski's board (`a`–`l`, skipping `j`), left to right. */
+export const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'k', 'l'];
+
+/**
+ * Returns the en-passant target square after a pawn double-push, or `null`.
+ * The target is the square the capturing pawn lands on (the skipped square),
+ * not the square of the captured pawn.
+ *
+ * @param from - Starting square of the move.
+ * @param to - Destination square of the move.
+ * @param piece - The piece that just moved; only pawns can trigger en passant.
+ * @returns The skipped square `{ q: to.q, r: (from.r + to.r) / 2 }`, or `null` if the move was not a pawn double-push.
+ */
+export function computeEnPassantTarget(from: Position, to: Position, piece: Piece | null | undefined,): Position | null {
+    if (piece?.type !== 'pawn') return null;
+
+    if (Math.abs(to.r - from.r) !== 2) return null;
+
+    return { q: to.q, r: (from.r + to.r) / 2 };
+}
+
+/**
+ * Returns a new cell array with the piece moved from `from` to `to`.
+ * Handles en-passant capture by also clearing the captured pawn's cell.
+ *
+ * @param cells - Current board state.
+ * @param from - Source square; must contain a piece or the function throws.
+ * @param to - Destination square.
+ * @param enPassantTarget - The landing square for an en-passant capture, or `null`.
+ * @param movingColor - Side making the move (used to locate the captured pawn's rank).
+ * @returns A new `Cell[]` with the move applied; the original array is not mutated.
+ * @throws If no cell exists at `from`.
+ */
 export function applyMove(cells: Cell[], from: Position, to: Position, enPassantTarget: Position | null, movingColor: Color): Cell[] {
     const epCapturedR = enPassantTarget ? enPassantTarget.r + (movingColor === 'white' ? -1 : 1) : null;
 
@@ -9,7 +42,9 @@ export function applyMove(cells: Cell[], from: Position, to: Position, enPassant
         cell.q === enPassantTarget.q &&
         cell.r === epCapturedR;
 
-    const piece = cells.find(c => samePos(c, from))!.piece;
+    const fromCell = cells.find(c => samePos(c, from));
+    if (!fromCell) throw new Error(`applyMove: no cell at (${from.q},${from.r})`);
+    const piece = fromCell.piece;
 
     return cells.map(cell => {
         if (samePos(cell, from)) return { ...cell, piece: null };
@@ -19,13 +54,27 @@ export function applyMove(cells: Cell[], from: Position, to: Position, enPassant
     });
 }
 
-// A cell (q, r) is on Glinski's 91-cell board when all three cube coords stay within ±5.
-// Cube coords: x=q, z=r, y=-q-r. Constraint: max(|q|, |r|, |q+r|) <= 5.
+/**
+ * Returns `true` when `(q, r)` lies on Glinski's 91-cell board.
+ * A cell is valid when all three cube coordinates (`q`, `r`, `s = −q−r`) stay within `±5`:
+ * `max(|q|, |r|, |q+r|) ≤ 5`.
+ *
+ * @param q - Column coordinate (file axis).
+ * @param r - Row coordinate (rank axis).
+ * @returns `true` if the cell is within board bounds.
+ */
 export function isValidCell(q: number, r: number): boolean {
     return Math.abs(q) <= 5 && Math.abs(r) <= 5 && Math.abs(q + r) <= 5;
 }
 
-// Color based on (q - r) mod 3 which guarantees bishops never change color.
+/**
+ * Returns the visual shading for cell `(q, r)` based on `(q − r) mod 3`.
+ * This formula guarantees that bishops always remain on a single shading.
+ *
+ * @param q - Column coordinate.
+ * @param r - Row coordinate.
+ * @returns `'light'`, `'mid'`, or `'dark'` shading for the cell.
+ */
 function getCellColor(q: number, r: number): CellColor {
     const mod = ((q - r) % 3 + 3) % 3;
 
@@ -34,7 +83,7 @@ function getCellColor(q: number, r: number): CellColor {
     return 'dark';
 }
 
-// Generate all 91 cells of Glinski's board with no pieces on them.
+/** Generates all 91 cells of Glinski's board populated with the standard starting pieces. */
 export function generateBoard(): Cell[] {
     const cells: Cell[] = [];
 
@@ -43,9 +92,7 @@ export function generateBoard(): Cell[] {
 
             if (isValidCell(q, r)) {
                 const cellColor: CellColor = getCellColor(q, r);
-                const piece = null;
-
-                cells.push({q, r, cellColor, piece});
+                cells.push({q, r, cellColor, piece: null});
             }
         }
     }
@@ -57,7 +104,15 @@ export function generateBoard(): Cell[] {
     return cells;
 }
 
-// Flat-top hexagon pixel position. Negating y so rank increases upward on screen.
+/**
+ * Converts axial coordinates `(q, r)` to pixel coordinates for a flat-top hexagon layout.
+ * The y-axis is negated so that rank numbers increase upward on screen.
+ *
+ * @param q - Column coordinate.
+ * @param r - Row coordinate.
+ * @param size - Distance from the center to any corner (circumradius).
+ * @returns Pixel center `{x, y}` of the hex.
+ */
 export function toPixel(q: number, r: number, size: number): {x: number; y: number} {
     return {
         x: size * (3 / 2) * q,
@@ -80,8 +135,8 @@ export function toPixel(q: number, r: number, size: number): {x: number; y: numb
  *
  * @param cx - X coordinate of the hexagon center
  * @param cy - Y coordinate of the hexagon center
- * @param size - Distance from center to any flat side (hex radius)
- * @returns Array of [x, y] coordinate pairs
+ * @param size - Distance from center to any corner (circumradius).
+ * @returns Array of six `[x, y]` coordinate pairs in clockwise order.
  */
 export function hexVertices(cx: number, cy: number, size: number): [number, number][] {
     const h = (size * Math.sqrt(3)) / 2; // Vertical distance from center to top/bottom vertices
@@ -109,29 +164,51 @@ export function hexPoints(cx: number, cy: number, size: number): string {
         .join(' ');
 }
 
+
+/**
+ * Returns a string key for `pos` in the form `"q,r"`, used as a `Map` key.
+ *
+ * @param pos - The position to serialize.
+ * @returns A string of the form `"q,r"`.
+ */
 export function posKey(pos: Position): string {
     return `${pos.q},${pos.r}`;
 }
 
+/**
+ * Builds an O(1) position-to-cell lookup map from a `Cell` array.
+ *
+ * @param cells - Board state to index.
+ * @returns A `Map` keyed by `posKey` strings, pointing to the corresponding `Cell`.
+ */
+export function buildCellMap(cells: Cell[]): Map<string, Cell> {
+    const map = new Map<string, Cell>();
+    for (const cell of cells) map.set(posKey(cell), cell);
+    return map;
+}
+
+/**
+ * Returns `true` when two positions share the same axial coordinates.
+ *
+ * @param a - First position.
+ * @param b - Second position.
+ * @returns `true` if `a.q === b.q && a.r === b.r`.
+ */
 export function samePos(a: Position, b: Position): boolean {
     return a.q === b.q && a.r === b.r;
 }
 
-// Converts a file letter + rank number to (q, r) coordinates.
-// file: 'a'–'l' (no 'j').  rank: 1–11.
-export function fileRankToPos(file: string, rank: number): Position {
-    const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'k', 'l'];
-    const q = files.indexOf(file) - 5;
-    const r = rank - Math.min(q, 0) - 6;
-    return { q, r };
-}
 
 
-
-// FEN builds by ranks, but for hex style JAN will build by files (since ranks basically bend in our implementation)
-// 6/P5P/RP4rp/N1P3p1n/Q2P2p2q/BBB1P1p1bbb/K2P2p2k/N1P3p1n/RP4rp/P5P/6
+/**
+ * Returns the standard Glinski starting position as a piece map.
+ * Uses JAN notation: `/`-separated segments, one per file (`a`–`l`), rank 1 upward.
+ * Uppercase = white, lowercase = black, digits = consecutive empty cells.
+ *
+ * @returns A `Map` of `posKey` strings to `Piece` values for all 36 starting pieces.
+ */
 export function getStartingPieces(): Map<string, Piece> {
-    return parseFen('6/P5p/RP4pr/N1P3p1n/Q2P2p2q/BBB1P1p1bbb/K2P2p2k/N1P3p1n/RP4pr/P5p/6');
+    return parseJan('6/P5p/RP4pr/N1P3p1n/Q2P2p2q/BBB1P1p1bbb/K2P2p2k/N1P3p1n/RP4pr/P5p/6');
 }
 
 
@@ -140,17 +217,21 @@ const PIECE_FROM_CHAR: Record<string, PieceType> = {
 };
 
 /**
- * Parses a OAN string into a piece map.
+ * Parses a JAN string into a piece map.
  * Segments are separated by `/`, one per file (a–l), read from rank 1 upward.
- * Uppercase letters = white, lowercase = black. Digits = empty cells.
+ * Uppercase letters = white, lowercase = black. Digits = consecutive empty cells.
  *
- * @param fen - The OAN FEN string to parse
- * @returns Map of position keys to pieces
+ * @param jan - The JAN string to parse; must have exactly 11 `/`-separated segments.
+ * @returns A `Map` of `posKey` strings to `Piece` values.
  */
-export function parseFen(fen: string): Map<string, Piece> {
+export function parseJan(jan: string): Map<string, Piece> {
+    const segments = jan.split('/');
+    if (import.meta.env.DEV && segments.length !== 11)
+        console.warn(`parseJan: expected 11 segments, got ${segments.length}`);
+
     const pieces = new Map<string, Piece>();
 
-    fen.split('/').forEach((segment, i) => {
+    segments.forEach((segment, i) => {
         const q = i - 5;
         let r = Math.max(-5, -5 - q);
 

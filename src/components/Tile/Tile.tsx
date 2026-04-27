@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { Cell } from '../../game/types.ts';
 import { hexPoints } from '../../game/board.ts';
 import { PieceSymbol } from './Piece.tsx';
@@ -13,19 +14,20 @@ interface HexTileFillProps {
     isHighlight: boolean;
     isCheck: boolean;
     isClickable: boolean;
-    onClick: () => void;
+    isFocused: boolean;
+    handleCellClick: (q: number, r: number) => void;
     pieceSet: string;
     flipped?: boolean;
 }
 
 
-export function HexTileFill({ cell, x, y, size, isSelected, isHighlight, isCheck, isClickable, onClick, pieceSet, flipped }: HexTileFillProps) {
+export const HexTileFill = memo(function HexTileFill({ cell, x, y, size, isSelected, isHighlight, isCheck, isClickable, isFocused, handleCellClick, pieceSet, flipped }: HexTileFillProps) {
     const points = hexPoints(x, y, size);
 
     return (
         <g
             className={`hex-tile ${isClickable ? 'clickable' : 'no-pointer-events'}`}
-            onClick={onClick}
+            onClick={() => handleCellClick(cell.q, cell.r)}
         >
             <polygon
                 points={points}
@@ -35,7 +37,7 @@ export function HexTileFill({ cell, x, y, size, isSelected, isHighlight, isCheck
             {isCheck && (
                 <polygon
                     points={points}
-                    fill="rgba(220, 0, 0, 0.5)"
+                    fill="var(--highlight-check)"
                     style={{ pointerEvents: 'none' }}
                 />
             )}
@@ -43,7 +45,18 @@ export function HexTileFill({ cell, x, y, size, isSelected, isHighlight, isCheck
             {(isSelected || isHighlight) && (
                 <polygon
                     points={points}
-                    fill={isSelected ? 'rgba(255, 255, 0, 0.45)' : 'rgba(0, 200, 0, 0.45)'}
+                    fill={isSelected ? 'var(--highlight-selected)' : 'var(--highlight-move)'}
+                    style={{ pointerEvents: 'none' }}
+                />
+            )}
+
+            {isFocused && (
+                <polygon
+                    points={points}
+                    fill="none"
+                    stroke="white"
+                    strokeWidth={3}
+                    strokeDasharray="5 3"
                     style={{ pointerEvents: 'none' }}
                 />
             )}
@@ -60,4 +73,4 @@ export function HexTileFill({ cell, x, y, size, isSelected, isHighlight, isCheck
             )}
         </g>
     );
-}
+});

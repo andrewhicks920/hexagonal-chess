@@ -1,22 +1,25 @@
-import { type Cell, type Color, type Position } from './types';
-import { isValidCell } from './board';
+import {type Cell, type Color, type Position} from './types';
+import {buildCellMap, isValidCell} from './board';
 
-// Rook — slides along 3 axes (6 directions)
-const ROOK_DIRS: [number, number][] = [
+/** Six orthogonal directions for a rook — one per shared hex edge, along the q, r, and s axes. */
+export const ROOK_DIRS: [number, number][] = [
     [ 0,  1], [ 0, -1],  // along r
     [ 1,  0], [-1,  0],  // along q
     [ 1, -1], [-1,  1],  // along s (−q−r)
 ];
 
-// Bishop — slides through shared vertices (6 directions)
-const BISHOP_DIRS: [number, number][] = [
+/** Six diagonal directions for a bishop — through shared hex vertices (two cube coords change). */
+export const BISHOP_DIRS: [number, number][] = [
     [ 1,  1], [-1, -1],
     [ 2, -1], [-2,  1],
     [ 1, -2], [-1,  2],
 ];
 
-// Knight — 12 fixed jumps (1 rook step + 1 bishop step, non-parallel axis)
-const KNIGHT_MOVES: [number, number][] = [
+/**
+ * 12 fixed knight jumps: one rook step followed by one bishop step on a non-parallel axis.
+ * Glinski's hex knight has 12 possible destinations (vs. 8 on a square board).
+ */
+export const KNIGHT_MOVES: [number, number][] = [
     [ 3, -1], [-3,  1],
     [ 2,  1], [-2, -1],
     [ 1,  2], [-1, -2],
@@ -25,20 +28,39 @@ const KNIGHT_MOVES: [number, number][] = [
     [ 2, -3], [-2,  3],
 ];
 
-const KING_DIRS: [number, number][] = [...ROOK_DIRS, ...BISHOP_DIRS];
+/** All 12 adjacent directions for a king — union of rook and bishop directions. */
+export const KING_DIRS: [number, number][] = [...ROOK_DIRS, ...BISHOP_DIRS];
 
-function cellAt(cells: Cell[], q: number, r: number): Cell | undefined {
-    return cells.find(c => c.q === q && c.r === r);
+/**
+ * Retrieves a cell from a pre-built map by its axial coordinates.
+ *
+ * @param cellMap - Map produced by {@link buildCellMap}.
+ * @param q - Column coordinate.
+ * @param r - Row coordinate.
+ * @returns The matching `Cell`, or `undefined` if the position is off-board or absent.
+ */
+function cellAt(cellMap: Map<string, Cell>, q: number, r: number): Cell | undefined {
+    return cellMap.get(`${q},${r}`);
 }
 
-// Walk one ray until the board edge, a friendly piece, or a capture.
-function slide(cells: Cell[], from: Position, dq: number, dr: number, color: Color,): Position[] {
+/**
+ * Walks one ray in direction `(deltaQ, deltaR)` from `from`, collecting squares until
+ * the board edge, a friendly piece (exclusive), or an enemy piece (inclusive capture).
+ *
+ * @param cellMap - Pre-built O(1) lookup map for the current board state.
+ * @param from - Starting position of the sliding piece.
+ * @param deltaQ - Column step per iteration (e.g. `+1`, `0`, or `-1`).
+ * @param deltaR - Row step per iteration.
+ * @param color - Color of the sliding piece; used to exclude friendly-piece squares.
+ * @returns All reachable positions along this ray.
+ */
+function slide(cellMap: Map<string, Cell>, from: Position, deltaQ: number, deltaR: number, color: Color): Position[] {
     const moves: Position[] = [];
-    let q = from.q + dq;
-    let r = from.r + dr;
+    let q = from.q + deltaQ;
+    let r = from.r + deltaR;
 
     while (isValidCell(q, r)) {
-        const occupant = cellAt(cells, q, r)?.piece;
+        const occupant = cellAt(cellMap, q, r)?.piece;
         if (occupant) {
             if (occupant.color !== color)
                 moves.push({ q, r }); // capture
@@ -47,70 +69,83 @@ function slide(cells: Cell[], from: Position, dq: number, dr: number, color: Col
         }
 
         moves.push({ q, r });
-        q += dq;
-        r += dr;
+        q += deltaQ;
+        r += deltaR;
     }
 
     return moves;
 }
 
-function rookMoves(cells: Cell[], pos: Position, color: Color): Position[] {
-    return ROOK_DIRS.flatMap(([dq, dr]) => slide(cells, pos, dq, dr, color));
+/** All squares reachable by a rook at `pos` (slides along the three orthogonal axes). */
+function rookMoves(cellMap: Map<string, Cell>, pos: Position, color: Color): Position[] {
+    return ROOK_DIRS.flatMap(([deltaQ, deltaR]) => slide(cellMap, pos, deltaQ, deltaR, color));
 }
 
-function bishopMoves(cells: Cell[], pos: Position, color: Color): Position[] {
-    return BISHOP_DIRS.flatMap(([dq, dr]) => slide(cells, pos, dq, dr, color));
+/** All squares reachable by a bishop at `pos` (slides along the six diagonal axes). */
+function bishopMoves(cellMap: Map<string, Cell>, pos: Position, color: Color): Position[] {
+    return BISHOP_DIRS.flatMap(([deltaQ, deltaR]) => slide(cellMap, pos, deltaQ, deltaR, color));
 }
 
-function queenMoves(cells: Cell[], pos: Position, color: Color): Position[] {
-    return [
-        ...ROOK_DIRS.flatMap(([dq, dr]) => slide(cells, pos, dq, dr, color)),
-        ...BISHOP_DIRS.flatMap(([dq, dr]) => slide(cells, pos, dq, dr, color)),
-    ];
+/** All squares reachable by a queen at `pos` (union of rook and bishop moves). */
+function queenMoves(cellMap: Map<string, Cell>, pos: Position, color: Color): Position[] {
+    return [...rookMoves(cellMap, pos, color), ...bishopMoves(cellMap, pos, color)];
 }
 
-function kingMoves(cells: Cell[], pos: Position, color: Color): Position[] {
+/** All squares reachable by a king at `pos` (one step in any of the 12 adjacent directions). */
+function kingMoves(cellMap: Map<string, Cell>, pos: Position, color: Color): Position[] {
     const moves: Position[] = [];
-    for (const [dq, dr] of KING_DIRS) {
-        const q = pos.q + dq;
-        const r = pos.r + dr;
+    for (const [deltaQ, deltaR] of KING_DIRS) {
+        const q = pos.q + deltaQ;
+        const r = pos.r + deltaR;
         if (!isValidCell(q, r)) continue;
-        const occupant = cellAt(cells, q, r)?.piece;
+        const occupant = cellAt(cellMap, q, r)?.piece;
         if (occupant?.color === color) continue; // own piece blocks
         moves.push({ q, r });
     }
     return moves;
 }
 
-function knightMoves(cells: Cell[], pos: Position, color: Color): Position[] {
+/** All squares reachable by a knight at `pos` (12 fixed L-shaped jumps). */
+function knightMoves(cellMap: Map<string, Cell>, pos: Position, color: Color): Position[] {
     const moves: Position[] = [];
-    for (const [dq, dr] of KNIGHT_MOVES) {
-        const q = pos.q + dq;
-        const r = pos.r + dr;
+    for (const [deltaQ, deltaR] of KNIGHT_MOVES) {
+        const q = pos.q + deltaQ;
+        const r = pos.r + deltaR;
         if (!isValidCell(q, r)) continue;
-        const occupant = cellAt(cells, q, r)?.piece;
+        const occupant = cellAt(cellMap, q, r)?.piece;
         if (occupant?.color === color) continue;
         moves.push({ q, r });
     }
     return moves;
 }
 
-// White moves visually upward: straight (0,+1), captures (+1,0) and (−1,+1)
-// Black moves visually downward: straight (0,−1), captures (−1,0) and (+1,−1)
-function pawnMoves(cells: Cell[], pos: Position, color: Color, enPassantTarget: Position | null,): Position[] {
+/**
+ * All squares reachable by a pawn at `pos`, including en-passant captures.
+ *
+ * White moves upward: pushes along `(0,+1)`, captures along `(+1,0)` and `(−1,+1)`.
+ * Black moves downward: pushes along `(0,−1)`, captures along `(−1,0)` and `(+1,−1)`.
+ * A double-push is allowed only from the pawn's starting rank.
+ *
+ * @param cellMap - Pre-built O(1) lookup map for the current board state.
+ * @param pos - Current position of the pawn.
+ * @param color - Color of the pawn.
+ * @param enPassantTarget - The square a capturing pawn would land on, or `null`.
+ * @returns All reachable squares, including en-passant capture squares.
+ */
+function pawnMoves(cellMap: Map<string, Cell>, pos: Position, color: Color, enPassantTarget: Position | null): Position[] {
     const moves: Position[] = [];
     const { q, r } = pos;
-    const dr = color === 'white' ? 1 : -1;
+    const forward = color === 'white' ? 1 : -1;
 
     // Straight — non-capturing
-    const oneAhead = cellAt(cells, q, r + dr);
+    const oneAhead = cellAt(cellMap, q, r + forward);
     if (oneAhead && !oneAhead.piece) {
-        moves.push({ q, r: r + dr });
+        moves.push({ q, r: r + forward });
 
         if (isOnStartingRank(q, r, color)) {
-            const twoAhead = cellAt(cells, q, r + 2 * dr);
+            const twoAhead = cellAt(cellMap, q, r + 2 * forward);
             if (twoAhead && !twoAhead.piece)
-                moves.push({ q, r: r + 2 * dr });
+                moves.push({ q, r: r + 2 * forward });
         }
     }
 
@@ -120,12 +155,12 @@ function pawnMoves(cells: Cell[], pos: Position, color: Color, enPassantTarget: 
             ? [[ 1,  0], [-1,  1]]
             : [[-1,  0], [ 1, -1]];
 
-    for (const [dq, dCapR] of captureDirs) {
-        const tq = q + dq;
+    for (const [deltaQ, dCapR] of captureDirs) {
+        const tq = q + deltaQ;
         const tr = r + dCapR;
         if (!isValidCell(tq, tr)) continue;
 
-        const target = cellAt(cells, tq, tr);
+        const target = cellAt(cellMap, tq, tr);
         const isEnPassant = enPassantTarget?.q === tq && enPassantTarget?.r === tr;
 
         if ((target?.piece && target.piece.color !== color) || isEnPassant)
@@ -135,23 +170,36 @@ function pawnMoves(cells: Cell[], pos: Position, color: Color, enPassantTarget: 
     return moves;
 }
 
-// White starting r: −(max(q,0) + 1)  →  verified against all 9 pawn positions ✓
-// Black starting r:  max(1 − q, 1)   →  verified against all 9 pawn positions ✓
+/**
+ * Returns `true` when the pawn at `(q, r)` is on its starting rank and eligible for a double-push.
+ *
+ * White starting r: `−(max(q, 0) + 1)` — verified against all 9 pawn starting positions.
+ * Black starting r: `max(1 − q, 1)`    — verified against all 9 pawn starting positions.
+ *
+ * @param q - Column coordinate of the pawn.
+ * @param r - Row coordinate of the pawn.
+ * @param color - Color of the pawn.
+ * @returns `true` if the pawn has not yet moved from its initial rank.
+ */
 function isOnStartingRank(q: number, r: number, color: Color): boolean {
     if (color === 'white') return r === -(Math.max(q, 0) + 1);
     return r === Math.max(1 - q, 1);
 }
 
-export let boardStateCount = 0;
-export function resetBoardStateCount() { boardStateCount = 0; }
 
 /**
  * Returns all pseudo-legal moves for the piece at `pos`.
- * Does NOT filter moves that leave the king in check — that comes next.
+ * Does NOT filter moves that leave the king in check — call {@link getLegalMoves} for that.
+ *
+ * @param cells - Current board state.
+ * @param pos - Position of the piece to move.
+ * @param enPassantTarget - En-passant landing square available this turn, or `null`.
+ * @returns All destinations reachable by piece movement rules, regardless of check.
  */
-export function getValidMoves(cells: Cell[], pos: Position, enPassantTarget: Position | null = null,): Position[] {
-    boardStateCount++;
-    const cell = cellAt(cells, pos.q, pos.r);
+export function getPseudoLegalMoves(cells: Cell[], pos: Position, enPassantTarget: Position | null = null): Position[] {
+    // Build once so every cellAt lookup below is O(1) instead of O(n).
+    const cellMap = buildCellMap(cells);
+    const cell = cellAt(cellMap, pos.q, pos.r);
 
     if (!cell?.piece)
         return [];
@@ -159,11 +207,13 @@ export function getValidMoves(cells: Cell[], pos: Position, enPassantTarget: Pos
     const { type, color } = cell.piece;
 
     switch (type) {
-        case 'rook':   return rookMoves(cells, pos, color);
-        case 'bishop': return bishopMoves(cells, pos, color);
-        case 'queen':  return queenMoves(cells, pos, color);
-        case 'king':   return kingMoves(cells, pos, color);
-        case 'knight': return knightMoves(cells, pos, color);
-        case 'pawn':   return pawnMoves(cells, pos, color, enPassantTarget);
+        case 'rook':   return rookMoves(cellMap, pos, color);
+        case 'bishop': return bishopMoves(cellMap, pos, color);
+        case 'queen':  return queenMoves(cellMap, pos, color);
+        case 'king':   return kingMoves(cellMap, pos, color);
+        case 'knight': return knightMoves(cellMap, pos, color);
+        case 'pawn':   return pawnMoves(cellMap, pos, color, enPassantTarget);
+
+        default: throw new Error(`Unhandled piece type: ${type}`);
     }
 }

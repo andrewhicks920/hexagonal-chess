@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isValidCell, generateBoard, fileRankToPos, samePos, applyMove, posKey } from '../board';
+import { isValidCell, generateBoard, samePos, applyMove, posKey } from '../board';
 import { pos, w, b, makeBoard, allValidCells } from './helpers';
 
 describe('isValidCell', () => {
@@ -78,21 +78,6 @@ describe('generateBoard', () => {
         expect(count('king')).toBe(1);
         expect(count('knight')).toBe(2);
         expect(count('rook')).toBe(2);
-    });
-});
-
-describe('fileRankToPos', () => {
-    it("'f',6 → (0,0): center of the board", () => {
-        expect(fileRankToPos('f', 6)).toEqual(pos(0, 0));
-    });
-
-    it("'a',1 → (-5,0): bottom-left corner", () => {
-        expect(fileRankToPos('a', 1)).toEqual(pos(-5, 0));
-    });
-
-    it("'l',1 → (5,-5): bottom-right area", () => {
-        // q=5, r=1 - min(5,0) - 6 = 1-0-6 = -5
-        expect(fileRankToPos('l', 1)).toEqual(pos(5, -5));
     });
 });
 

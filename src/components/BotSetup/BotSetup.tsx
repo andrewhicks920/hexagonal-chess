@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Color } from '../../game/types';
 import type { Difficulty } from '../../game/ai';
+import { PlayerAvatar } from '../PlayerAvatar/PlayerAvatar.tsx';
 import './BotSetup.css';
 
 interface BotSetupProps {
@@ -18,11 +19,9 @@ export function BotSetup({ onStart }: BotSetupProps) {
     const [difficulty, setDifficulty] = useState<Difficulty>('medium');
 
     function handlePlay() {
-        let color: Color;
-
-        if (colorChoice === 'random') color = Math.random() < 0.5 ? 'white' : 'black';
-
-        else color = colorChoice;
+        const color: Color = colorChoice === 'random'
+            ? (Math.random() < 0.5 ? 'white' : 'black')
+            : colorChoice;
         onStart(color, difficulty);
     }
 
@@ -41,9 +40,7 @@ export function BotSetup({ onStart }: BotSetupProps) {
                                 onClick={() => setColorChoice(c)}
                             >
                                 <span className="bot-setup-color-icon">
-                                    {c === 'white' && <ColorKing color="white" />}
-                                    {c === 'black' && <ColorKing color="black" />}
-                                    {c === 'random' && <ColorKing color="random" />}
+                                    <ColorKing color={c} />
                                 </span>
                                 <span className="bot-setup-color-name">
                                     {c === 'white' ? 'White' : c === 'black' ? 'Black' : 'Random'}
@@ -87,13 +84,5 @@ function ColorKing({ color }: { color: 'white' | 'black' | 'random' }) {
             </svg>
         );
     }
-    const bg = color === 'white' ? '#9f9689' : '#555353';
-    const fg = color === 'white' ? '#d4ccc4' : '#3a3838';
-    return (
-        <svg viewBox="0 0 40 40" width="36" height="36">
-            <rect width="40" height="40" rx="4" fill={bg} />
-            <ellipse cx="20" cy="15" rx="8" ry="9" fill={fg} />
-            <ellipse cx="20" cy="38" rx="15" ry="12" fill={fg} />
-        </svg>
-    );
+    return <PlayerAvatar color={color} width={36} height={36} />;
 }
